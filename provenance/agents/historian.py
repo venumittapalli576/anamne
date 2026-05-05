@@ -71,6 +71,22 @@ class HistorianAgent:
     def __init__(self, store: Optional[DecisionStore] = None):
         self._cfg = get_settings()
         self._store = store or DecisionStore()
+        if not self._cfg.anthropic_api_key:
+            tier = self._cfg.model_tier()
+            if tier == "gemini":
+                raise RuntimeError(
+                    "Gemini extraction is on the roadmap but not yet implemented in v0.1.0. "
+                    "For now, please set ANTHROPIC_API_KEY to use Claude."
+                )
+            if tier == "ollama":
+                raise RuntimeError(
+                    "Ollama extraction is on the roadmap but not yet implemented in v0.1.0. "
+                    "For now, please set ANTHROPIC_API_KEY to use Claude."
+                )
+            raise RuntimeError(
+                "No LLM API key configured. Run `provenance init` to set one up."
+            )
+        self._model = self._cfg.model or "claude-sonnet-4-6"
         self._client = anthropic.Anthropic(api_key=self._cfg.anthropic_api_key)
 
     # ------------------------------------------------------------------ #
@@ -156,7 +172,7 @@ class HistorianAgent:
 
         try:
             response = self._client.messages.create(
-                model=self._cfg.model,
+                model=self._model,
                 max_tokens=1024,
                 messages=[
                     {
@@ -214,7 +230,7 @@ class HistorianAgent:
 
         try:
             response = self._client.messages.create(
-                model=self._cfg.model,
+                model=self._model,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )

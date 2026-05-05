@@ -43,10 +43,11 @@ def _require_api_key() -> str:
     cfg = get_settings()
     if not cfg.anthropic_api_key or cfg.anthropic_api_key == "your-key-here":
         console.print(
-            "\n[red bold]✗ ANTHROPIC_API_KEY not set.[/red bold]\n"
-            "  1. Create a [bold].env[/bold] file in this directory\n"
-            "  2. Add: [cyan]ANTHROPIC_API_KEY=sk-ant-...[/cyan]\n"
-            "  3. Get your key: [link]https://platform.anthropic.com[/link]\n"
+            "\n[red bold]No ANTHROPIC_API_KEY configured.[/red bold]\n"
+            "  Quickest fix: run [bold]provenance init[/bold]\n"
+            "  Or manually: add [cyan]ANTHROPIC_API_KEY=sk-ant-...[/cyan] to a [bold].env[/bold] file\n"
+            "  Get a key at [link]https://platform.anthropic.com[/link]\n\n"
+            "  [dim]Note: Gemini / Ollama support is on the roadmap for v0.2.[/dim]\n"
         )
         raise typer.Exit(1)
     return cfg.anthropic_api_key
@@ -61,32 +62,93 @@ def init(
     repo: Optional[Path] = typer.Argument(
         None, help="Repository path (default: current directory)"
     ),
+    skip_index: bool = typer.Option(
+        False, "--skip-index", help="Skip auto-indexing the current repo"
+    ),
 ) -> None:
-    """Set up PROVENANCE for a project."""
+    """Interactive setup wizard. Picks a model, writes .env, indexes the repo."""
     console.print(_BANNER)
-    repo_path = (repo or Path.cwd()).resolve()
-
-    env_file = Path(".env")
-    if not env_file.exists():
-        env_file.write_text(
-            "# PROVENANCE — add your Claude API key\n"
-            "ANTHROPIC_API_KEY=your-key-here\n",
-            encoding="utf-8",
-        )
-        console.print(f"[green]✓ Created[/green] [bold].env[/bold]")
-        console.print(
-            "  → Open [bold].env[/bold] and paste your key from "
-            "[link]https://platform.anthropic.com[/link]\n"
-        )
-    else:
-        console.print("[green]✓[/green] [bold].env[/bold] already exists")
 
     from provenance.config import get_settings
     cfg = get_settings()
+    repo_path = (repo or Path.cwd()).resolve()
+
+    # 1. Detect current model situation
+    console.print("\n[bold]Step 1/3 — Detecting available LLM[/bold]")
+    if cfg.anthropic_api_key:
+        console.print("[green]Found[/green] Anthropic key — will use [cyan]Claude Sonnet 4.6[/cyan] (best quality)")
+    elif cfg.gemini_api_key:
+        console.print("[green]Found[/green] Gemini key — will use [cyan]Gemini 2.5 Flash[/cyan] (free tier)")
+    else:
+        console.print("[yellow]No API key found.[/yellow] Three options:\n")
+        console.print("  [bold]1[/bold]  Gemini 2.5 Flash  [green](free tier — recommended)[/green]")
+        console.print("     -> Sign in at [link]https://aistudio.google.com/apikey[/link]")
+        console.print("  [bold]2[/bold]  Claude Sonnet 4.6  [dim](best quality, paid)[/dim]")
+        console.print("     -> Get a key at [link]https://platform.anthropic.com[/link]")
+        console.print("  [bold]3[/bold]  Ollama (llama3.2)  [dim](free, offline, ~4GB disk, slower)[/dim]")
+        console.print("     -> Install from [link]https://ollama.com[/link]\n")
+        choice = typer.prompt("Pick 1, 2, or 3", default="1").strip()
+        chosen = {"1": "gemini", "2": "claude", "3": "ollama"}.get(choice, "gemini")
+
+        env_file = Path(".env")
+        existing = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+
+        if chosen == "claude":
+            key = typer.prompt("Paste your Anthropic API key (starts with sk-ant-)", hide_input=True)
+            existing += f"\nANTHROPIC_API_KEY={key.strip()}\n"
+        elif chosen == "gemini":
+            key = typer.prompt("Paste your Gemini API key", hide_input=True)
+            existing += f"\nGEMINI_API_KEY={key.strip()}\n"
+        else:
+            existing += "\nMODEL=ollama/llama3.2\n"
+            console.print(
+                "[yellow]Note:[/yellow] make sure Ollama is running and "
+                "[cyan]ollama pull llama3.2[/cyan] has completed."
+            )
+
+        env_file.write_text(existing.lstrip() + "\n", encoding="utf-8")
+        console.print("[green]Wrote[/green] [bold].env[/bold]")
+
+    # 2. Set up data dir
+    console.print("\n[bold]Step 2/3 — Preparing local store[/bold]")
+    cfg = get_settings()  # re-read after writing .env
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    console.print(f"[green]✓[/green] Data directory: [dim]{cfg.data_dir}[/dim]")
-    console.print(f"[green]✓[/green] Repository: [cyan]{repo_path}[/cyan]\n")
-    console.print("Next step → [bold]provenance index .[/bold]")
+    console.print(f"[green]OK[/green] Data directory: [dim]{cfg.data_dir}[/dim]")
+
+    # 3. Optionally index the current repo
+    console.print("\n[bold]Step 3/3 — Indexing[/bold]")
+    if skip_index:
+        console.print("[yellow]Skipped (--skip-index).[/yellow]")
+        console.print(f"\nRun [bold]provenance index {repo_path}[/bold] when ready.")
+        return
+
+    is_git_repo = (repo_path / ".git").exists()
+    if not is_git_repo:
+        console.print(f"[yellow]Note:[/yellow] [cyan]{repo_path}[/cyan] is not a git repo. Skipping auto-index.")
+        console.print("\nRun [bold]provenance index <path-to-repo>[/bold] later.")
+        return
+
+    if typer.confirm(f"Index {repo_path} now?", default=True):
+        from provenance.agents.historian import HistorianAgent
+        from provenance.store.graph import DecisionStore
+
+        store = DecisionStore()
+        agent = HistorianAgent(store=store)
+        count = agent.index_repo(str(repo_path), max_commits=200)
+        console.print(f"\n[bold green]Done[/bold green] — indexed {count} decisions.")
+
+        if count > 0:
+            console.print(
+                '\nTry it now:\n'
+                '  [bold]provenance ask "what was this project built for?"[/bold]'
+            )
+        else:
+            console.print(
+                "[yellow]No decisions extracted.[/yellow] "
+                "Likely the commit messages are too short or trivial."
+            )
+    else:
+        console.print(f"\nRun [bold]provenance index {repo_path}[/bold] when ready.")
 
 
 @app.command()

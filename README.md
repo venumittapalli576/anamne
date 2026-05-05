@@ -1,6 +1,7 @@
 # PROVENANCE
 
-> **The living memory of why your code exists.**
+> A CLI tool that turns your git history into an answerable knowledge base.
+> Ask why architectural decisions were made. Get cited answers.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
@@ -8,69 +9,72 @@
 
 ---
 
-## What Is This?
+## What It Does
 
-Every codebase accumulates two kinds of debt:
-- **Technical debt** — messy code
-- **Knowledge debt** — no one knows *why* the code exists
-
-Cursor and Copilot can read your code. **PROVENANCE captures the WHY** — the reasoning behind every architectural decision, preserved forever and queryable by any AI tool.
+Read your git history. Extract architectural decisions from commit messages and ADR files using an LLM. Store them in a local knowledge base. Ask questions in plain English and get answers with citations.
 
 ```bash
 provenance ask "why was Redis added?"
-# → "Load testing showed /products timing out at 200 concurrent users.
-#    Redis was added with a 5-min TTL, reducing p99 latency from 4200ms to 180ms.
-#    Source: commit a3f9c12 by @alice (2024-03-15)"
-
-provenance ask "why was JWT replaced?"
-# → "Security audit SEC-1234 found JWTs in localStorage are XSS-vulnerable.
-#    Switched to opaque tokens in httpOnly cookies. Redis required for token store."
+# → Load testing showed /products timing out at 200 concurrent users.
+#   Redis added with 5-min TTL, reducing p99 latency from 4200ms to 180ms.
+#   Source: commit a3f9c12 by alice (2024-03-15)
 ```
 
----
-
-## Why PROVENANCE Wins Against Cursor / Copilot / OpenClaw
-
-| Feature | Cursor | Copilot | OpenClaw | **PROVENANCE** |
-|---|---|---|---|---|
-| Reads your code | Yes | Yes | Yes | Yes |
-| Knows *why* code exists | No | No | No | **Yes** |
-| Temporal decisions (when valid) | No | No | No | **Yes** |
-| Works with ANY AI tool via MCP | No | No | No | **Yes** |
-| Self-hosted, zero telemetry | No | No | No | **Yes** |
-| EU AI Act Article 11/12 ready | No | No | No | **Yes (Phase 3)** |
-| Vibe Debt Scanner | No | No | No | **Yes (Phase 3)** |
-| Model-agnostic (Claude/Gemini/Ollama) | No | No | No | **Yes** |
+That's the whole tool. One question, one answer, with sources.
 
 ---
 
-## Quick Start
+## What It Doesn't Do
+
+Be honest with yourself before installing this:
+
+- **It's only as good as your commit messages.** If your team commits "wip" and "fix bug," there's nothing to extract. Garbage in, garbage out.
+- **It doesn't read your code.** Cursor and Copilot do that. PROVENANCE only reads the history of *why* the code changed.
+- **It's not a replacement for ADRs.** It complements them. If you write good ADRs, PROVENANCE indexes those too.
+- **It costs money to index large repos** (unless you use the free tier — see Setup).
+
+---
+
+## Setup
+
+### One-command install
 
 ```bash
-# 1. Install
 pip install provenance-ai
+provenance init
+```
 
-# 2. Add your API key
-cp .env.example .env
-# Edit .env: ANTHROPIC_API_KEY=sk-ant-...
+`provenance init` walks you through everything: picks a model based on what you have available, indexes your current repo, and runs a sample query to confirm it works.
 
-# 3. Index your repo (reads git history, extracts decisions via Claude)
-provenance index /path/to/your/repo
+### Model options
 
-# 4. Ask anything
-provenance ask "why was Redis added?"
-provenance ask "why is authentication done with opaque tokens?"
-provenance ask "why was PostgreSQL chosen over MySQL?"
+| Model | Cost | Quality | Setup |
+|---|---|---|---|
+| **Gemini 2.5 Flash** (default) | Free tier | Good | Google account → free key |
+| Claude Sonnet 4.6 | ~$0.003/commit | Best | Anthropic API key |
+| Ollama (llama3.2) | Free, offline | Acceptable | Local install, ~4GB disk |
 
-# 5. Check status
-provenance status
+If you have no key set, `provenance init` defaults to Gemini's free tier.
+
+---
+
+## Commands
+
+```bash
+provenance init                       # interactive setup
+provenance index <repo>               # read git history into knowledge base
+provenance ask "your question"        # answer a WHY question
+provenance status                     # show indexed repos and stats
+provenance mcp-server                 # run as MCP server for Cursor/Claude Code
 ```
 
 ---
 
-## MCP Integration — Works in Cursor, Claude Code, any MCP client
+## MCP Integration
 
-Add to **Claude Code** (`.claude/settings.json`):
+PROVENANCE runs as an MCP server, so it plugs into Cursor, Claude Code, and any MCP-compatible AI tool. When you're editing code, the AI can ask PROVENANCE for the WHY context automatically.
+
+**Claude Code** (`.claude/settings.json`):
 ```json
 {
   "mcpServers": {
@@ -82,146 +86,93 @@ Add to **Claude Code** (`.claude/settings.json`):
 }
 ```
 
-Add to **Cursor** (Settings > MCP):
+**Cursor** (Settings > MCP):
 ```json
 { "command": "provenance mcp-server" }
 ```
 
-MCP tools exposed:
-- `ask_why(question)` — answer WHY questions about any decision
-- `search_decisions(query, limit)` — raw semantic search over decisions
-- `get_file_context(file_path)` — all decisions related to a specific file
-- `get_stats()` — knowledge base statistics
+Tools exposed:
+- `ask_why(question)` — answer questions about decisions
+- `search_decisions(query, limit)` — semantic search over decisions
+- `get_file_context(file_path)` — decisions touching a file
+- `get_stats()` — index status
 
 ---
 
-## Architecture
+## Demo
 
-```
-+-----------------------------------------------------+
-|                  PROVENANCE                         |
-+------------------+----------------------------------+
-|   Data Sources   |   Agents                        |
-|   -----------    |   ------                        |
-|   Git history    |   Historian  -> indexes repo    |
-|   ADR files      |   Oracle     -> answers WHY     |
-|   (Phase 2+)     |   Sentinel   -> reviews PRs     |
-|   Jira/Linear    |   Mentor     -> onboards devs   |
-|   Slack exports  |   Builder    -> WHY-aware code  |
-|                  |   Prophet    -> detects staleness|
-+------------------+----------------------------------+
-|   Storage                                           |
-|   SQLite (temporal/relational) + ChromaDB (semantic)|
-+-----------------------------------------------------+
-|   Interfaces                                        |
-|   CLI (Typer+Rich) | MCP Server | Web Dashboard     |
-+-----------------------------------------------------+
-```
-
----
-
-## Project Structure
-
-```
-provenance/
-├── provenance/
-│   ├── agents/
-│   │   ├── historian.py      # Git -> knowledge graph
-│   │   └── oracle.py         # WHY question answering
-│   ├── cli/
-│   │   └── main.py           # Typer CLI (init/index/ask/status/mcp)
-│   ├── mcp/
-│   │   └── server.py         # FastMCP server for Cursor/Claude Code
-│   ├── store/
-│   │   └── graph.py          # SQLite + ChromaDB dual store
-│   ├── config.py             # Pydantic settings (ANTHROPIC_API_KEY etc.)
-│   └── models.py             # Decision dataclass (bi-temporal)
-├── scripts/
-│   └── create_test_repo.py   # Demo repo with 10 realistic commits
-├── pyproject.toml
-├── .env.example
-└── ROADMAP.md
-```
-
----
-
-## Configuration
-
-Copy `.env.example` to `.env`:
-
-```env
-# Required
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional overrides
-MODEL=claude-sonnet-4-6          # or claude-opus-4-5, gemini-...
-DATA_DIR=~/.provenance            # where to store the knowledge base
-```
-
----
-
-## Demo — Try It Now
+Want to see it work without indexing your real repo?
 
 ```bash
-# Create a realistic test repo (10 commits with real architectural decisions)
-python scripts/create_test_repo.py
-
-# Index it
+python scripts/create_test_repo.py    # creates ./test-repo with 10 fake commits
 provenance index ./test-repo
-
-# Ask questions
 provenance ask "why was Redis added?"
 provenance ask "why was JWT replaced with opaque tokens?"
-provenance ask "why was Elasticsearch chosen over PostgreSQL search?"
-provenance ask "why was Stripe chosen over Braintree?"
 ```
 
 ---
 
-## Roadmap
+## How It Works
 
-See [ROADMAP.md](ROADMAP.md) for the detailed plan.
+```
+git history     →  Historian Agent  →  decisions stored in
++ ADR files        (LLM extracts        SQLite + ChromaDB
+                    structured WHYs)    (local, ~/.provenance/)
 
-**Phase 0 — Core (Complete)**
-- Decision model + bi-temporal store (SQLite + ChromaDB)
-- Historian Agent (git -> knowledge graph)
-- Oracle Agent (WHY answers)
-- FastMCP server (Cursor/Claude Code integration)
-- Typer+Rich CLI
+your question   →  Oracle Agent     →  cited answer
+                   (semantic search +
+                    LLM with context)
+```
 
-**Phase 1 — Integrations (Next)**
-- ADR file indexing (already scaffolded)
-- GitHub PR context ingestion
-- Jira / Linear ticket ingestion
-- Slack export ingestion
-
-**Phase 2 — More Agents**
-- Sentinel Agent: PR review with decision context
-- Mentor Agent: onboarding guided by decision history
-- Builder Agent: WHY-aware code generation
-- Prophet Agent: staleness detection and alerts
-
-**Phase 3 — Enterprise**
-- Vibe Debt Scanner: tracks AI-generated code accumulation
-- EU AI Act Compliance Mode: Article 11 docs + Article 12 audit logs
-- Web Dashboard (FastAPI + HTMX)
-- Docker Compose deployment
-- Gemini / Ollama / OpenAI-compatible model support
+Storage is local. Nothing leaves your machine except prompts to your chosen LLM. Bring your own key. Zero telemetry.
 
 ---
 
-## Contributing
+## Project Status
 
-PRs welcome. See [ROADMAP.md](ROADMAP.md) for what's planned.
+This is a personal open-source project. It works. It's MIT licensed. PRs welcome.
+
+**What's built (v0.1.0):**
+- CLI with `init`, `index`, `ask`, `status`, `mcp-server`
+- Historian Agent (git → decisions)
+- Oracle Agent (WHY answers with citations)
+- MCP server (Cursor/Claude Code compatible)
+- Local SQLite + ChromaDB store
+
+**What's planned (no commitment on timing):**
+- Better commit message filtering (skip trivial changes)
+- ADR file auto-detection (MADR, RFC formats)
+- VS Code extension (as a thin wrapper)
+- Simple web UI for browsing decisions
+
+**What's not planned:**
+- Enterprise features
+- Compliance modes
+- Anything that requires a paid tier
+
+See [ROADMAP.md](ROADMAP.md).
+
+---
+
+## Limitations to Know About
+
+1. **Commit message quality is the ceiling.** This tool can't invent context that isn't there.
+2. **Indexing a 5,000-commit repo takes 10-30 minutes** and may cost a few dollars on Claude (free on Gemini's tier within rate limits).
+3. **Local Ollama is noticeably worse** than Claude or Gemini for extraction quality.
+4. **MCP support is required** for the editor integration. Most editors don't support MCP yet — Cursor and Claude Code do.
+
+---
+
+## Install From Source
 
 ```bash
 git clone https://github.com/venumittapalli576/provenance
 cd provenance
-pip install -e ".[dev]"
+pip install -e .
 ```
 
 ---
 
 ## License
 
-MIT — free to use, fork, and build on. Zero telemetry. Bring your own key.
+MIT.

@@ -21,3 +21,10 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated artifacts
+PROVENANCE_*.docx
+scripts/node_modules/
+scripts/package-lock.json
+scripts/package.json
+test-repo/

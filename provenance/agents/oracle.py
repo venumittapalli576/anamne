@@ -57,6 +57,12 @@ class OracleAgent:
     def __init__(self, store: Optional[DecisionStore] = None):
         self._cfg = get_settings()
         self._store = store or DecisionStore()
+        if not self._cfg.anthropic_api_key:
+            raise RuntimeError(
+                "No Anthropic API key configured. Run `provenance init` to set one up. "
+                "Gemini and Ollama support is on the roadmap but not yet implemented."
+            )
+        self._model = self._cfg.model or "claude-sonnet-4-6"
         self._client = anthropic.Anthropic(api_key=self._cfg.anthropic_api_key)
 
     # ------------------------------------------------------------------ #
@@ -76,7 +82,7 @@ class OracleAgent:
         context = self._format_decisions(decisions)
 
         response = self._client.messages.create(
-            model=self._cfg.model,
+            model=self._model,
             max_tokens=2048,
             messages=[
                 {
