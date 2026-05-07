@@ -13,16 +13,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import anthropic
 import git
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from provenance.config import get_settings
+from provenance.llm import LLMClient
 from provenance.models import Decision
 from provenance.store.graph import DecisionStore
 
 console = Console()
+
+def _strip_code_fence(text: str) -> str:
+    """Remove ```json ... ``` or ``` ... ``` wrappers some models add."""
+    s = text.strip()
+    if s.startswith("```"):
+        # drop the opening fence line and trailing fence
+        lines = s.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        s = "\n".join(lines).strip()
+    return s
+
 
 # Commit messages that almost never contain architectural decisions
 _TRIVIAL = re.compile(
@@ -71,23 +85,8 @@ class HistorianAgent:
     def __init__(self, store: Optional[DecisionStore] = None):
         self._cfg = get_settings()
         self._store = store or DecisionStore()
-        if not self._cfg.anthropic_api_key:
-            tier = self._cfg.model_tier()
-            if tier == "gemini":
-                raise RuntimeError(
-                    "Gemini extraction is on the roadmap but not yet implemented in v0.1.0. "
-                    "For now, please set ANTHROPIC_API_KEY to use Claude."
-                )
-            if tier == "ollama":
-                raise RuntimeError(
-                    "Ollama extraction is on the roadmap but not yet implemented in v0.1.0. "
-                    "For now, please set ANTHROPIC_API_KEY to use Claude."
-                )
-            raise RuntimeError(
-                "No LLM API key configured. Run `provenance init` to set one up."
-            )
-        self._model = self._cfg.model or "claude-sonnet-4-6"
-        self._client = anthropic.Anthropic(api_key=self._cfg.anthropic_api_key)
+        self._llm = LLMClient(self._cfg)  # raises with clear msg if no key
+        self._model = self._llm.model
 
     # ------------------------------------------------------------------ #
     # Public API                                                            #
@@ -170,28 +169,18 @@ class HistorianAgent:
         except Exception:
             changed_files = []
 
+        prompt = _EXTRACT_PROMPT.format(
+            hash=commit.hexsha[:8],
+            author=commit.author.name,
+            date=datetime.fromtimestamp(commit.committed_date, tz=timezone.utc).strftime("%Y-%m-%d"),
+            message=message[:2500],
+            files=", ".join(changed_files) or "(unknown)",
+        )
         try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _EXTRACT_PROMPT.format(
-                            hash=commit.hexsha[:8],
-                            author=commit.author.name,
-                            date=datetime.fromtimestamp(
-                                commit.committed_date, tz=timezone.utc
-                            ).strftime("%Y-%m-%d"),
-                            message=message[:2500],
-                            files=", ".join(changed_files) or "(unknown)",
-                        ),
-                    }
-                ],
-            )
-            raw = response.content[0].text.strip()
+            raw = self._llm.complete(prompt, max_tokens=1024).text.strip()
+            raw = _strip_code_fence(raw)
             extracted: list[dict] = json.loads(raw)
-        except (json.JSONDecodeError, IndexError, anthropic.APIError):
+        except (json.JSONDecodeError, IndexError, ValueError, Exception):
             return []
 
         decisions = []
@@ -229,12 +218,9 @@ class HistorianAgent:
         )
 
         try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            extracted = json.loads(response.content[0].text.strip())
+            raw = self._llm.complete(prompt, max_tokens=1024).text.strip()
+            raw = _strip_code_fence(raw)
+            extracted = json.loads(raw)
         except Exception:
             return []
 

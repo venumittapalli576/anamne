@@ -52,7 +52,7 @@ provenance init
 |---|---|---|---|
 | **Gemini 2.5 Flash** (default) | Free tier | Good | Google account → free key |
 | Claude Sonnet 4.6 | ~$0.003/commit | Best | Anthropic API key |
-| Ollama (llama3.2) | Free, offline | Acceptable | Local install, ~4GB disk |
+| Ollama (llama3.2) | Free, offline | Roadmap | Not yet implemented |
 
 If you have no key set, `provenance init` defaults to Gemini's free tier.
 

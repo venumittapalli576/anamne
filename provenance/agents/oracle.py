@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-import anthropic
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
 from provenance.config import get_settings
+from provenance.llm import LLMClient
 from provenance.models import Decision
 from provenance.store.graph import DecisionStore
 
@@ -57,13 +57,8 @@ class OracleAgent:
     def __init__(self, store: Optional[DecisionStore] = None):
         self._cfg = get_settings()
         self._store = store or DecisionStore()
-        if not self._cfg.anthropic_api_key:
-            raise RuntimeError(
-                "No Anthropic API key configured. Run `provenance init` to set one up. "
-                "Gemini and Ollama support is on the roadmap but not yet implemented."
-            )
-        self._model = self._cfg.model or "claude-sonnet-4-6"
-        self._client = anthropic.Anthropic(api_key=self._cfg.anthropic_api_key)
+        self._llm = LLMClient(self._cfg)
+        self._model = self._llm.model
 
     # ------------------------------------------------------------------ #
     # Public API                                                            #
@@ -81,21 +76,8 @@ class OracleAgent:
 
         context = self._format_decisions(decisions)
 
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": _ORACLE_PROMPT.format(
-                        decisions=context,
-                        question=question,
-                    ),
-                }
-            ],
-        )
-
-        return response.content[0].text
+        prompt = _ORACLE_PROMPT.format(decisions=context, question=question)
+        return self._llm.complete(prompt, max_tokens=2048).text
 
     def ask_pretty(self, question: str) -> None:
         """Ask and print a rich-formatted answer to the terminal."""

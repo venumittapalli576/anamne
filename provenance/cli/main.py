@@ -38,19 +38,20 @@ _BANNER = """[bold green]
 ╚═══════════════════════════════════════╝[/bold green]"""
 
 
-def _require_api_key() -> str:
+def _require_api_key() -> None:
     from provenance.config import get_settings
     cfg = get_settings()
-    if not cfg.anthropic_api_key or cfg.anthropic_api_key == "your-key-here":
+    has_claude = bool(cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here")
+    has_gemini = bool(cfg.gemini_api_key)
+    if not (has_claude or has_gemini):
         console.print(
-            "\n[red bold]No ANTHROPIC_API_KEY configured.[/red bold]\n"
+            "\n[red bold]No LLM API key configured.[/red bold]\n"
             "  Quickest fix: run [bold]provenance init[/bold]\n"
-            "  Or manually: add [cyan]ANTHROPIC_API_KEY=sk-ant-...[/cyan] to a [bold].env[/bold] file\n"
-            "  Get a key at [link]https://platform.anthropic.com[/link]\n\n"
-            "  [dim]Note: Gemini / Ollama support is on the roadmap for v0.2.[/dim]\n"
+            "  Or manually add one of these to a [bold].env[/bold] file:\n"
+            "    [cyan]ANTHROPIC_API_KEY=sk-ant-...[/cyan]  (Claude, paid)\n"
+            "    [cyan]GEMINI_API_KEY=...[/cyan]            (Gemini, free tier)\n"
         )
         raise typer.Exit(1)
-    return cfg.anthropic_api_key
 
 
 # ------------------------------------------------------------------ #
