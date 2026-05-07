@@ -1,12 +1,12 @@
 """
-PROVENANCE CLI — The living memory of why your code exists.
+PROVENANCE CLI - The living memory of why your code exists.
 
 Commands:
-  init    — set up PROVENANCE for a project
-  index   — read git history and build the knowledge graph
-  ask     — ask why something exists (the main demo)
-  status  — show knowledge base stats
-  mcp     — start the MCP server for Cursor / Claude Code
+  init    - set up PROVENANCE for a project
+  index   - read git history and build the knowledge graph
+  ask     - ask why something exists (the main demo)
+  status  - show knowledge base stats
+  mcp     - start the MCP server for Cursor / Claude Code
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from rich.text import Text
 
 app = typer.Typer(
     name="provenance",
-    help="[bold green]PROVENANCE[/bold green] — The living memory of [italic]why[/italic] your code exists.",
+    help="[bold green]PROVENANCE[/bold green] - The living memory of [italic]why[/italic] your code exists.",
     rich_markup_mode="rich",
     no_args_is_help=True,
     add_completion=False,
@@ -74,14 +74,14 @@ def init(
     repo_path = (repo or Path.cwd()).resolve()
 
     # 1. Detect current model situation
-    console.print("\n[bold]Step 1/3 — Detecting available LLM[/bold]")
+    console.print("\n[bold]Step 1/3 - Detecting available LLM[/bold]")
     if cfg.anthropic_api_key:
-        console.print("[green]Found[/green] Anthropic key — will use [cyan]Claude Sonnet 4.6[/cyan] (best quality)")
+        console.print("[green]Found[/green] Anthropic key - will use [cyan]Claude Sonnet 4.6[/cyan] (best quality)")
     elif cfg.gemini_api_key:
-        console.print("[green]Found[/green] Gemini key — will use [cyan]Gemini 2.5 Flash[/cyan] (free tier)")
+        console.print("[green]Found[/green] Gemini key - will use [cyan]Gemini 2.5 Flash[/cyan] (free tier)")
     else:
         console.print("[yellow]No API key found.[/yellow] Three options:\n")
-        console.print("  [bold]1[/bold]  Gemini 2.5 Flash  [green](free tier — recommended)[/green]")
+        console.print("  [bold]1[/bold]  Gemini 2.5 Flash  [green](free tier - recommended)[/green]")
         console.print("     -> Sign in at [link]https://aistudio.google.com/apikey[/link]")
         console.print("  [bold]2[/bold]  Claude Sonnet 4.6  [dim](best quality, paid)[/dim]")
         console.print("     -> Get a key at [link]https://platform.anthropic.com[/link]")
@@ -110,13 +110,13 @@ def init(
         console.print("[green]Wrote[/green] [bold].env[/bold]")
 
     # 2. Set up data dir
-    console.print("\n[bold]Step 2/3 — Preparing local store[/bold]")
+    console.print("\n[bold]Step 2/3 - Preparing local store[/bold]")
     cfg = get_settings()  # re-read after writing .env
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     console.print(f"[green]OK[/green] Data directory: [dim]{cfg.data_dir}[/dim]")
 
     # 3. Optionally index the current repo
-    console.print("\n[bold]Step 3/3 — Indexing[/bold]")
+    console.print("\n[bold]Step 3/3 - Indexing[/bold]")
     if skip_index:
         console.print("[yellow]Skipped (--skip-index).[/yellow]")
         console.print(f"\nRun [bold]provenance index {repo_path}[/bold] when ready.")
@@ -135,7 +135,7 @@ def init(
         store = DecisionStore()
         agent = HistorianAgent(store=store)
         count = agent.index_repo(str(repo_path), max_commits=200)
-        console.print(f"\n[bold green]Done[/bold green] — indexed {count} decisions.")
+        console.print(f"\n[bold green]Done[/bold green] - indexed {count} decisions.")
 
         if count > 0:
             console.print(
@@ -161,7 +161,7 @@ def index(
         None, "--adr-dir", help="Directory containing ADR markdown files"
     ),
 ) -> None:
-    """Index a repository — read git history and build the WHY knowledge graph."""
+    """Index a repository - read git history and build the WHY knowledge graph."""
     _require_api_key()
 
     from provenance.agents.historian import HistorianAgent
@@ -183,7 +183,7 @@ def index(
         count += agent.index_adr_dir(str(adr_dir), repo_path=str(repo_path))
 
     console.print(
-        f"\n[bold green]✓ Done![/bold green] "
+        f"\n[bold green]Done![/bold green] "
         f"Stored [bold]{count}[/bold] new decisions  "
         f"([dim]total: {store.count()}[/dim])\n"
     )
@@ -232,16 +232,20 @@ def status() -> None:
     table.add_row("Decisions indexed", f"[bold]{count}[/bold]")
     table.add_row(
         "Status",
-        "[green]ready[/green]" if count > 0 else "[yellow]empty — run: provenance index .[/yellow]",
+        "[green]ready[/green]" if count > 0 else "[yellow]empty - run: provenance index .[/yellow]",
     )
     table.add_row("Indexed repos", str(len(repos)) if repos else "none")
     table.add_row("Data dir", str(cfg.data_dir))
-    table.add_row("Model", cfg.model)
+    table.add_row("Model", cfg.resolved_model() or "[dim](not set)[/dim]")
+    table.add_row(
+        "Tier",
+        cfg.model_tier(),
+    )
     table.add_row(
         "API key",
-        "[green]✓ set[/green]"
+        "[green]set[/green]"
         if cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here"
-        else "[red]✗ missing[/red]",
+        else "[red]missing[/red]",
     )
 
     if repos:
@@ -254,7 +258,7 @@ def status() -> None:
 
 @app.command()
 def mcp_server() -> None:
-    """Start the MCP server — connects PROVENANCE to Cursor / Claude Code."""
+    """Start the MCP server - connects PROVENANCE to Cursor / Claude Code."""
     _require_api_key()
     from provenance.mcp.server import run
 
@@ -263,7 +267,7 @@ def mcp_server() -> None:
             "[bold]Starting PROVENANCE MCP server[/bold]\n\n"
             "Add to [bold]Claude Code[/bold] (.claude/settings.json):\n"
             '[cyan]{ "mcpServers": { "provenance": { "command": "provenance", "args": ["mcp-server"] } } }[/cyan]\n\n'
-            "Add to [bold]Cursor[/bold] (Settings → MCP):\n"
+            "Add to [bold]Cursor[/bold] (Settings -> MCP):\n"
             '[cyan]{ "command": "provenance mcp-server" }[/cyan]',
             border_style="green",
         )
