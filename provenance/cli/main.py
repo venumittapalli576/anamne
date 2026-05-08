@@ -273,20 +273,30 @@ def status() -> None:
 
 @app.command()
 def mcp_server() -> None:
-    """Start the MCP server - connects PROVENANCE to Cursor / Claude Code."""
-    _require_api_key()
-    from provenance.mcp.server import run
+    """Start the MCP server - connects PROVENANCE to Cursor / Claude Code.
 
-    console.print(
-        Panel(
-            "[bold]Starting PROVENANCE MCP server[/bold]\n\n"
-            "Add to [bold]Claude Code[/bold] (.claude/settings.json):\n"
-            '[cyan]{ "mcpServers": { "provenance": { "command": "provenance", "args": ["mcp-server"] } } }[/cyan]\n\n'
-            "Add to [bold]Cursor[/bold] (Settings -> MCP):\n"
-            '[cyan]{ "command": "provenance mcp-server" }[/cyan]',
-            border_style="green",
+    IMPORTANT: MCP uses stdio for JSON-RPC. We must NOT write anything to
+    stdout other than the protocol itself, or the host (Claude Code, Cursor)
+    will fail to parse the handshake. Status messages go to stderr.
+    """
+    import sys
+    from provenance.config import get_settings
+
+    cfg = get_settings()
+    if not (cfg.anthropic_api_key or cfg.gemini_api_key):
+        # Stderr-only — must not pollute stdout
+        sys.stderr.write(
+            "PROVENANCE MCP: no LLM API key configured.\n"
+            "Run `provenance init` first, then restart your MCP host.\n"
         )
+        raise typer.Exit(1)
+
+    sys.stderr.write(
+        f"PROVENANCE MCP server starting (model: {cfg.resolved_model()})\n"
     )
+    sys.stderr.flush()
+
+    from provenance.mcp.server import run
     run()
 
 

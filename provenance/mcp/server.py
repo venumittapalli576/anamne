@@ -97,8 +97,13 @@ def get_stats() -> dict:
 
 
 def run() -> None:
-    """Entry point — runs the MCP server via stdio (for Claude Code / Cursor)."""
-    mcp.run(transport="stdio")
+    """Entry point - runs the MCP server via stdio (for Claude Code / Cursor).
+
+    show_banner=False is critical: MCP uses stdio for JSON-RPC, so anything
+    written to stdout other than the protocol corrupts the handshake and the
+    host (Claude Code, Cursor) silently rejects the server.
+    """
+    mcp.run(transport="stdio", show_banner=False)
 
 
 if __name__ == "__main__":

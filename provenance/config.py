@@ -39,22 +39,25 @@ class Settings(BaseSettings):
     mcp_port: int = 8765
 
     def resolved_model(self) -> str:
-        """Pick the best available model based on what the user has set up."""
+        """Pick the best available model based on what the user has set up.
+
+        Must stay consistent with provenance.llm.LLMClient defaults.
+        """
         if self.model:
             return self.model
         if self.anthropic_api_key:
             return "claude-sonnet-4-6"
         if self.gemini_api_key:
-            return "gemini/gemini-2.5-flash"
-        return "ollama/llama3.2"  # fallback — assumes Ollama is installed
+            return "gemini-2.5-flash-lite"
+        return "ollama/llama3.2"  # fallback - assumes Ollama is installed
 
     def model_tier(self) -> ModelTier:
-        m = self.resolved_model()
-        if m.startswith("claude"):
+        m = self.resolved_model().lower()
+        if "claude" in m or m.startswith("anthropic"):
             return "claude"
-        if m.startswith("gemini"):
+        if "gemini" in m:
             return "gemini"
-        if m.startswith("ollama"):
+        if "ollama" in m or m.startswith("llama"):
             return "ollama"
         return "none"
 
