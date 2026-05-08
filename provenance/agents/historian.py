@@ -180,7 +180,12 @@ class HistorianAgent:
             raw = self._llm.complete(prompt, max_tokens=1024).text.strip()
             raw = _strip_code_fence(raw)
             extracted: list[dict] = json.loads(raw)
-        except (json.JSONDecodeError, IndexError, ValueError, Exception):
+        except (json.JSONDecodeError, ValueError) as e:
+            console.log(f"[dim]Skipped {commit.hexsha[:8]} (parse error: {e})[/dim]")
+            return []
+        except Exception as e:
+            # Surface API errors so users see what's wrong instead of silent skips
+            console.log(f"[red]LLM call failed on {commit.hexsha[:8]}: {type(e).__name__}: {e}[/red]")
             return []
 
         decisions = []

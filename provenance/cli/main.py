@@ -95,11 +95,25 @@ def init(
         existing = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
 
         if chosen == "claude":
-            key = typer.prompt("Paste your Anthropic API key (starts with sk-ant-)", hide_input=True)
-            existing += f"\nANTHROPIC_API_KEY={key.strip()}\n"
+            console.print(
+                "[dim]Tip: keys are visible while typing so you can verify the paste worked. "
+                "Press Enter when done.[/dim]"
+            )
+            key = typer.prompt("Paste your Anthropic API key (sk-ant-...)").strip()
+            if not key.startswith("sk-ant-") or len(key) < 20:
+                console.print("[red]That doesn't look like a valid Anthropic key. Aborting.[/red]")
+                raise typer.Exit(1)
+            existing += f"\nANTHROPIC_API_KEY={key}\n"
         elif chosen == "gemini":
-            key = typer.prompt("Paste your Gemini API key", hide_input=True)
-            existing += f"\nGEMINI_API_KEY={key.strip()}\n"
+            console.print(
+                "[dim]Tip: keys are visible while typing so you can verify the paste worked. "
+                "Press Enter when done.[/dim]"
+            )
+            key = typer.prompt("Paste your Gemini API key (AIza...)").strip()
+            if not key.startswith("AIza") or len(key) < 20:
+                console.print("[red]That doesn't look like a valid Gemini key. Aborting.[/red]")
+                raise typer.Exit(1)
+            existing += f"\nGEMINI_API_KEY={key}\n"
         else:
             existing += "\nMODEL=ollama/llama3.2\n"
             console.print(

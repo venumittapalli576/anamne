@@ -6,8 +6,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ModelTier = Literal["claude", "gemini", "ollama", "none"]
 
 
+# Look in multiple places so the MCP server (launched from any directory)
+# still finds the user's keys. First non-empty match wins per pydantic-settings.
+_ENV_PATHS = (
+    Path.cwd() / ".env",                       # current working directory
+    Path.home() / ".provenance" / ".env",       # user's data dir
+)
+
+
 class Settings(BaseSettings):
-    """Reads from .env file.
+    """Reads from .env file (cwd or ~/.provenance/.env).
 
     Recognized env vars:
       ANTHROPIC_API_KEY  — Claude API key (best quality)
@@ -17,7 +25,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=tuple(str(p) for p in _ENV_PATHS),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
