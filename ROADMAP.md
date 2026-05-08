@@ -1,79 +1,97 @@
 # PROVENANCE — Roadmap
 
-A personal open-source project. No funding, no team, no monetization. PRs welcome.
+A local-first, brain-inspired memory layer for AI users. Personal open-source project. MIT.
 
 ---
 
 ## What's Built (v0.1.0)
 
-- `Decision` data model with bi-temporal fields (created_at, valid_until)
-- SQLite + ChromaDB dual store (relational + semantic search)
-- Historian Agent — extracts decisions from git commits via LLM
-- Oracle Agent — answers WHY questions with citations
-- FastMCP server for Cursor / Claude Code integration
-- Typer + Rich CLI: `init`, `index`, `ask`, `status`, `mcp-server`
-- Demo script that creates a test repo with 10 realistic commits
+- `Decision`/`Memory` data model with bi-temporal fields (created_at, valid_until)
+- SQLite + ChromaDB dual store
+- Historian Agent — captures memories from git history via LLM
+- Oracle Agent — recalls memories with citations
+- FastMCP server with 4 tools (`ask_why`, `search_decisions`, `get_file_context`, `get_stats`)
+- CLI with `init`, `index`, `ask`, `status`, `mcp-server`
+- Working multi-model LLM client (Claude + Gemini)
+- One-command setup via `provenance init`
 
 ---
 
-## Phase 1 — Polish the Core (next)
+## Direction Change
 
-The goal is to make the existing demo really good before adding anything new.
+Originally PROVENANCE captured "WHY decisions were made" from git. We discovered Repowise (and others) already do this well in the WHY-layer category.
 
-- **Single-command setup** — `provenance init` becomes an interactive wizard. Detects available models, picks the best free option, indexes the current repo, runs a sample query.
-- **Free tier by default** — Gemini 2.5 Flash as default model (Google account, no credit card). Claude as upgrade path. Ollama as offline option.
-- **Better commit filtering** — improve the regex that skips trivial commits (merges, formatting, typos). Reduce LLM API cost by 30-50% on average repos.
-- **ADR auto-detection** — find ADR files in common locations (`docs/adr`, `docs/decisions`, `adr/`) without needing `--adr-dir`. Support MADR, RFC, and plain markdown.
-- **Tests** — pytest coverage for the core extraction + retrieval flow.
-- **Honest README + docs** — done in this commit.
+**v0.2 pivots PROVENANCE into a brain-inspired personal memory layer for AI users.** The core architecture (bi-temporal store + semantic retrieval + MCP server) maps directly onto the LIGHT memory framework from 2026 research. We're reframing what we already built rather than starting over.
 
 ---
 
-## Phase 2 — Useful Additions (only if Phase 1 lands well)
+## Phase 1 — Memory Architecture (next 2 weeks)
 
-- **VS Code extension** — thin wrapper over the CLI. Right-click a file → "Show decisions touching this file." Not a primary product, just convenience.
-- **Simple web UI** — single FastAPI page showing all indexed decisions, filterable by repo / date / file. No HTMX magic, just a useful list view.
-- **`provenance commit` command** — wraps `git commit`. Reads your diff, suggests a richer commit message with WHY context. User confirms or edits before commit. Solves the "garbage commits" problem at the source going forward.
-- **GitHub PR descriptions ingestion** — if your team uses good PR descriptions, those are gold. Read them via `gh` CLI (no GitHub App needed).
+**Goal:** Implement the three LIGHT layers cleanly.
+
+- **Episodic memory layer** — refactor existing decisions into the long-term episodic store. Already 90% done.
+- **Scratchpad layer** — explicit `remember()` API for distilled facts. New table, simple.
+- **Working memory layer** — short-term session state with TTL. New, small. Stores "what I'm working on right now."
+- **Cross-layer recall** — Oracle agent queries all three layers and weighs them properly. Mostly refactor.
+- **`provenance remember` CLI command** — add fact to scratchpad
+- **`provenance recall` CLI command** — generalized version of current `ask`
+- **`forget(memory_id)` MCP tool** — explicit deletion matching brain-style decay
 
 ---
 
-## Phase 3 — Maybe / Stretch (only if Phase 2 has users)
+## Phase 2 — Better Capture (after Phase 1)
 
-- **Jira / Linear ticket ingestion** — read tickets the user already has access to.
-- **Slack export ingestion** — parse a Slack workspace export, extract decisions from `#architecture`-type channels.
-- **Staleness detection** — flag decisions that haven't been referenced in N months. Just a heuristic, not a full agent.
+- **Clipboard capture** — `provenance capture-clipboard` watches and offers to remember interesting things
+- **AI conversation import** — point at exported Claude / ChatGPT / Cursor logs, extract memories
+- **Manual journal entry** — quick CLI to log a thought before it's lost
+
+---
+
+## Phase 3 — Polish
+
+- **Web UI** — simple browser view of all memories, filterable
+- **Browser extension** — auto-suggest "remember this?" for important things you read
+- **Better forgetting** — implement actual ACT-R-style decay (temporal decay + activation frequency)
+- **Memory consolidation** — periodic background job that merges related memories (analog of sleep)
 
 ---
 
 ## What This Project Is Not
 
-Things I've considered and explicitly dropped:
-
-- **Enterprise compliance mode** — EU AI Act doesn't actually apply to this category of tool. Was hype on my part.
-- **Vibe Debt Scanner** — couldn't define a real measurement. Was a buzzword.
-- **6 specialist agents** (Builder, Sentinel, Mentor, Prophet) — over-engineered. The core Oracle agent already does most of what these were supposed to do.
-- **Backstage plugin** — premature. Build it if someone using Backstage actually asks for it.
-- **Decision Templates library** — over-engineered. Engineers can write their own templates.
+Things explicitly out of scope:
+- Cloud SaaS — local-first, always
+- Developer SDK for app builders — that's Mem0 / Supermemory's market
+- Enterprise memory governance — too much surface area for a solo project
+- Replacement for AI-tool-native memory features (ChatGPT memory, Claude projects)
+- Anything that requires hosting
 
 ---
 
 ## Honest Limitations
 
-- Output quality depends entirely on commit message quality.
-- Initial indexing of a large repo can be slow and costly.
-- Ollama local mode is meaningfully worse than hosted models.
-- MCP integration only works in editors that support MCP (Cursor, Claude Code, Cline, a few others).
-- Solo project — bug reports may sit in the queue for a while.
+- Quality depends on what you capture. Garbage in, garbage out.
+- The "brain-inspired" framing is a useful metaphor, not a neuroscience claim.
+- Solo project. Bug reports may sit. Don't depend on this in production.
+- Existing competitors (Mem0, Supermemory, MemPalace) are well-funded; this is the open-source, local-first alternative for individuals.
+
+---
+
+## Inspired By
+
+- **LIGHT** ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246)) — three-layer memory framework
+- **ACT-R Memory Architecture** — temporal decay + semantic activation
+- **Agent Cognitive Compressor** — bounded compressed state
+- **Hippocampal indexing theory** — long-term storage as compressed patterns
+- **Lore protocol** ([arXiv 2603.15566](https://arxiv.org/abs/2603.15566)) — git-as-knowledge-protocol
 
 ---
 
 ## Contributing
-
-Open an issue first for anything bigger than a small fix. PRs that add complexity without clear user benefit will be politely declined.
 
 ```bash
 git clone https://github.com/venumittapalli576/provenance
 cd provenance
 pip install -e .
 ```
+
+PRs welcome. Keep scope small. Reject feature creep.

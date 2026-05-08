@@ -1,7 +1,6 @@
 # PROVENANCE
 
-> A CLI tool that turns your git history into an answerable knowledge base.
-> Ask why architectural decisions were made. Get cited answers.
+> A local-first, brain-inspired memory layer for everyone who uses Claude, Cursor, ChatGPT, or any MCP-compatible AI tool.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
@@ -11,50 +10,57 @@
 
 ## What It Does
 
-Read your git history. Extract architectural decisions from commit messages and ADR files using an LLM. Store them in a local knowledge base. Ask questions in plain English and get answers with citations.
+AI tools forget you between sessions. Every time you open a new chat with Claude or Cursor, you re-explain who you are, what you're working on, what you've already decided.
+
+PROVENANCE is a memory layer that sits on **your** machine, captures the things worth remembering across all your AI conversations and your code history, and feeds them back into any AI tool through MCP.
 
 ```bash
-provenance ask "why was Redis added?"
-# → Load testing showed /products timing out at 200 concurrent users.
-#   Redis added with 5-min TTL, reducing p99 latency from 4200ms to 180ms.
-#   Source: commit a3f9c12 by alice (2024-03-15)
+# Capture a fact
+provenance remember "I'm a vegetarian who's allergic to peanuts"
+
+# Recall context for any topic
+provenance recall "what dietary restrictions do I have?"
+
+# Or let it index your git history automatically
+provenance index ./my-repo
 ```
 
-That's the whole tool. One question, one answer, with sources.
+When you next open Claude or Cursor, the AI already knows what matters — without you re-typing it.
 
 ---
 
-## What It Doesn't Do
+## Why This Exists
 
-Be honest with yourself before installing this:
+Recent benchmarks: top models drop accuracy from 99% to 30% as conversations grow long. Even 1M-token context windows lose track of what mattered three turns ago.
 
-- **It's only as good as your commit messages.** If your team commits "wip" and "fix bug," there's nothing to extract. Garbage in, garbage out.
-- **It doesn't read your code.** Cursor and Copilot do that. PROVENANCE only reads the history of *why* the code changed.
-- **It's not a replacement for ADRs.** It complements them. If you write good ADRs, PROVENANCE indexes those too.
-- **It costs money to index large repos** (unless you use the free tier — see Setup).
+The fix isn't bigger context windows. It's **structured memory** — the way human brains do it.
+
+PROVENANCE implements a **brain-inspired three-layer memory architecture** drawn from 2026 research (LIGHT, ACT-R, ACC):
+
+| Layer | Brain analog | What it stores |
+|---|---|---|
+| **Episodic** | Long-term hippocampal index | Full record of past conversations and code decisions |
+| **Working** | Prefrontal cortex | What you're focused on right this session |
+| **Scratchpad** | Semantic memory | Distilled facts ("I prefer Python", "we use Postgres") |
+
+Each layer has its own retrieval policy and decay rules. Combined, they let any AI tool feel like it remembers you across sessions, devices, and even across different AI tools.
 
 ---
 
 ## Setup
-
-### One-command install
 
 ```bash
 pip install provenance-ai
 provenance init
 ```
 
-`provenance init` walks you through everything: picks a model based on what you have available, indexes your current repo, and runs a sample query to confirm it works.
-
-### Model options
+`provenance init` walks you through everything. Picks a model based on what API keys you have, creates the local memory store, indexes your current repo if any.
 
 | Model | Cost | Quality | Setup |
 |---|---|---|---|
-| **Gemini 2.5 Flash** (default) | Free tier | Good | Google account → free key |
+| **Gemini 2.5 Flash Lite** (default) | Free tier | Good | Google login → free key |
 | Claude Sonnet 4.6 | ~$0.003/commit | Best | Anthropic API key |
-| Ollama (llama3.2) | Free, offline | Roadmap | Not yet implemented |
-
-If you have no key set, `provenance init` defaults to Gemini's free tier.
+| Ollama | Free, offline | Roadmap | Not yet implemented |
 
 ---
 
@@ -62,25 +68,35 @@ If you have no key set, `provenance init` defaults to Gemini's free tier.
 
 ```bash
 provenance init                       # interactive setup
-provenance index <repo>               # read git history into knowledge base
-provenance ask "your question"        # answer a WHY question
-provenance status                     # show indexed repos and stats
-provenance mcp-server                 # run as MCP server for Cursor/Claude Code
+provenance remember "fact or note"    # add to scratchpad memory
+provenance recall "your question"     # cross-layer recall, cited
+provenance index <repo>               # bulk-import git history into episodic memory
+provenance status                     # show memory stats
+provenance mcp-server                 # run as MCP server for AI tools
 ```
 
 ---
 
-## MCP Integration
+## MCP Integration — Memory Layer for Any AI Tool
 
-PROVENANCE runs as an MCP server, so it plugs into Cursor, Claude Code, and any MCP-compatible AI tool. When you're editing code, the AI can ask PROVENANCE for the WHY context automatically.
+PROVENANCE runs as an MCP server, exposing memory tools to Claude, Cursor, Cline, and any MCP-compatible AI:
 
-**Claude Code** (`.claude/settings.json`):
+| Tool | What it does |
+|---|---|
+| `recall(question)` | Cross-layer memory search with citations |
+| `remember(fact)` | Add a fact to scratchpad memory |
+| `working_context()` | What you've been working on this session |
+| `episodic_search(query)` | Long-term memory retrieval |
+| `forget(memory_id)` | Explicit deletion (matches brain decay) |
+
+**Claude Code** (`~/.claude/claude_desktop_config.json` or `~/.claude.json`):
 ```json
 {
   "mcpServers": {
     "provenance": {
       "command": "provenance",
-      "args": ["mcp-server"]
+      "args": ["mcp-server"],
+      "cwd": "/path/to/your/.provenance/data"
     }
   }
 }
@@ -91,88 +107,60 @@ PROVENANCE runs as an MCP server, so it plugs into Cursor, Claude Code, and any 
 { "command": "provenance mcp-server" }
 ```
 
-Tools exposed:
-- `ask_why(question)` — answer questions about decisions
-- `search_decisions(query, limit)` — semantic search over decisions
-- `get_file_context(file_path)` — decisions touching a file
-- `get_stats()` — index status
+---
+
+## Why Local-First
+
+- Your memory stays on your machine. Nothing goes to a vendor server.
+- Your API keys stay in your `.env`. No middleman billing.
+- Your data is portable — SQLite + a folder of files. Take it anywhere.
+- Open source under MIT. No vendor lock-in.
+
+This is the opposite of cloud memory products like Mem0 or Supermemory, which target app developers and require their backend. PROVENANCE is for individual humans using AI tools.
+
+---
+
+## Honest Limitations
+
+- Output quality depends on how clearly you capture memories. Garbage in, garbage out.
+- Indexing a large repo can be slow and cost a few dollars on paid LLM APIs (free on Gemini's tier within rate limits).
+- MCP integration only works in editors that support MCP (Cursor, Claude Code, Cline, a few others).
+- This is a personal project. Not production infrastructure.
+- Brain-inspired architecture is approximate — neuroscience is hard, this is a useful metaphor not a model of the actual brain.
+
+---
+
+## Inspired By Recent Research
+
+This isn't a from-scratch design. PROVENANCE implements ideas from:
+
+- **LIGHT** — three-layer memory framework ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246))
+- **ACT-R-Inspired Memory** — temporal decay + activation
+- **Agent Cognitive Compressor** — bounded compressed cognitive state
+- **Hippocampal indexing theory** — episodic memory stores compressed neocortical patterns
 
 ---
 
 ## Demo
 
-Want to see it work without indexing your real repo?
-
 ```bash
-python scripts/create_test_repo.py    # creates ./test-repo with 10 fake commits
+python scripts/create_test_repo.py
 provenance index ./test-repo
-provenance ask "why was Redis added?"
-provenance ask "why was JWT replaced with opaque tokens?"
+provenance recall "why was Redis added?"
+provenance remember "always use 2-space indentation in this project"
+provenance recall "what's our indentation style?"
 ```
 
 ---
 
-## How It Works
+## Status
 
-```
-git history     →  Historian Agent  →  decisions stored in
-+ ADR files        (LLM extracts        SQLite + ChromaDB
-                    structured WHYs)    (local, ~/.provenance/)
-
-your question   →  Oracle Agent     →  cited answer
-                   (semantic search +
-                    LLM with context)
-```
-
-Storage is local. Nothing leaves your machine except prompts to your chosen LLM. Bring your own key. Zero telemetry.
-
----
-
-## Project Status
-
-This is a personal open-source project. It works. It's MIT licensed. PRs welcome.
-
-**What's built (v0.1.0):**
-- CLI with `init`, `index`, `ask`, `status`, `mcp-server`
-- Historian Agent (git → decisions)
-- Oracle Agent (WHY answers with citations)
-- MCP server (Cursor/Claude Code compatible)
-- Local SQLite + ChromaDB store
-
-**What's planned (no commitment on timing):**
-- Better commit message filtering (skip trivial changes)
-- ADR file auto-detection (MADR, RFC formats)
-- VS Code extension (as a thin wrapper)
-- Simple web UI for browsing decisions
-
-**What's not planned:**
-- Enterprise features
-- Compliance modes
-- Anything that requires a paid tier
-
-See [ROADMAP.md](ROADMAP.md).
-
----
-
-## Limitations to Know About
-
-1. **Commit message quality is the ceiling.** This tool can't invent context that isn't there.
-2. **Indexing a 5,000-commit repo takes 10-30 minutes** and may cost a few dollars on Claude (free on Gemini's tier within rate limits).
-3. **Local Ollama is noticeably worse** than Claude or Gemini for extraction quality.
-4. **MCP support is required** for the editor integration. Most editors don't support MCP yet — Cursor and Claude Code do.
-
----
-
-## Install From Source
-
-```bash
-git clone https://github.com/venumittapalli576/provenance
-cd provenance
-pip install -e .
-```
+- v0.1.x — git-history capture and recall (works)
+- v0.2.x — explicit `remember` and `working_context` (in progress)
+- v0.3.x — multi-source capture (clipboard, browser, AI conversations)
 
 ---
 
 ## License
 
-MIT.
+MIT. Open source. Bring your own key. Zero telemetry.

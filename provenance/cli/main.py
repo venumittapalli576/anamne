@@ -224,6 +224,113 @@ def ask(
     agent.ask_pretty(question)
 
 
+# ------------------------------------------------------------------ #
+# Memory layer commands (v0.2 — brain-inspired)                        #
+# ------------------------------------------------------------------ #
+
+@app.command()
+def remember(
+    fact: str = typer.Argument(..., help="A fact to add to scratchpad memory"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Tags (repeatable)"),
+) -> None:
+    """Store a fact in scratchpad memory (durable, brain-inspired semantic memory)."""
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+    mem_id = store.remember(fact, tags=tag or None)
+    console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {fact}")
+    if tag:
+        console.print(f"[dim]  tags: {', '.join(tag)}[/dim]")
+
+
+@app.command()
+def recall(
+    query: str = typer.Argument(..., help="What to recall from memory"),
+) -> None:
+    """Recall across episodic memory and scratchpad facts."""
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+
+    # Scratchpad — direct, no LLM call needed
+    facts = store.search_facts(query, limit=5)
+    if facts:
+        console.print("\n[bold cyan]From scratchpad:[/bold cyan]")
+        for f in facts:
+            tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
+            console.print(f"  - {f['fact']}{tag_str}")
+
+    # Episodic memory — uses Oracle agent
+    if store.count() > 0:
+        _require_api_key()
+        from provenance.agents.oracle import OracleAgent
+        console.print("\n[bold cyan]From episodic memory:[/bold cyan]")
+        agent = OracleAgent(store=store)
+        agent.ask_pretty(query)
+    elif not facts:
+        console.print(
+            "\n[yellow]Nothing found.[/yellow] "
+            "Try [bold]provenance remember[/bold] or [bold]provenance index[/bold] first."
+        )
+
+
+@app.command()
+def forget(
+    memory_id: str = typer.Argument(..., help="Scratchpad memory ID to delete"),
+) -> None:
+    """Forget a specific scratchpad fact."""
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+    if store.forget_fact(memory_id):
+        console.print(f"[green]Forgot[/green] {memory_id}")
+    else:
+        console.print(f"[yellow]No fact with id {memory_id}[/yellow]")
+
+
+@app.command()
+def facts(
+    limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
+) -> None:
+    """List facts in scratchpad memory."""
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+    rows = store.list_facts(limit=limit)
+    if not rows:
+        console.print("[dim]Scratchpad is empty. Try [bold]provenance remember \"...\"[/bold][/dim]")
+        return
+    for f in rows:
+        tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
+        console.print(f"[cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+
+
+@app.command()
+def working(
+    note: Optional[str] = typer.Argument(None, help="Note to add (omit to list)"),
+    ttl: int = typer.Option(60, "--ttl", help="Minutes until auto-expire"),
+    clear: bool = typer.Option(False, "--clear", help="Clear all working memory"),
+) -> None:
+    """Manage working memory (short-lived session context)."""
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+
+    if clear:
+        n = store.working_clear()
+        console.print(f"[green]Cleared[/green] {n} working memory items")
+        return
+
+    if note:
+        mem_id = store.working_add(note, ttl_minutes=ttl)
+        console.print(f"[green]Added[/green] [dim]({mem_id}, expires in {ttl}m)[/dim]: {note}")
+        return
+
+    items = store.working_active()
+    if not items:
+        console.print("[dim]Working memory is empty.[/dim]")
+        return
+    console.print(f"\n[bold]Working memory ({len(items)} items):[/bold]\n")
+    for w in items:
+        console.print(f"  [cyan]{w['id']}[/cyan]  {w['note']}")
+        console.print(f"           [dim]expires: {w['expires_at']}[/dim]")
+
+
 @app.command()
 def status() -> None:
     """Show knowledge base stats."""

@@ -21,6 +21,7 @@ from provenance.models import Decision
 
 
 _SCHEMA = """
+-- Episodic memory: the long-term store. Every captured event/decision lives here.
 CREATE TABLE IF NOT EXISTS decisions (
     id           TEXT PRIMARY KEY,
     content      TEXT NOT NULL,
@@ -39,6 +40,28 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE INDEX IF NOT EXISTS idx_repo   ON decisions(repo_path);
 CREATE INDEX IF NOT EXISTS idx_src    ON decisions(source_ref);
 CREATE INDEX IF NOT EXISTS idx_date   ON decisions(created_at);
+
+-- Scratchpad: distilled, durable facts the user explicitly remembers.
+-- Brain analog: semantic memory ("Paris is the capital of France" style).
+CREATE TABLE IF NOT EXISTS scratchpad (
+    id           TEXT PRIMARY KEY,
+    fact         TEXT NOT NULL,
+    tags         TEXT NOT NULL DEFAULT '[]',
+    created_at   TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    use_count    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_scratch_used ON scratchpad(last_used_at);
+
+-- Working memory: short-lived session context. Auto-decays with TTL.
+-- Brain analog: prefrontal working memory (what you're holding in your head NOW).
+CREATE TABLE IF NOT EXISTS working_memory (
+    id           TEXT PRIMARY KEY,
+    note         TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_working_exp ON working_memory(expires_at);
 """
 
 
@@ -141,6 +164,98 @@ class DecisionStore:
                 "SELECT DISTINCT repo_path FROM decisions WHERE repo_path != ''"
             ).fetchall()
         return [r[0] for r in rows]
+
+    # ------------------------------------------------------------------ #
+    # Scratchpad — durable user-provided facts                              #
+    # ------------------------------------------------------------------ #
+
+    def remember(self, fact: str, tags: Optional[list[str]] = None) -> str:
+        """Add a fact to scratchpad. Returns the new memory id."""
+        import uuid
+        from datetime import datetime, timezone
+        mem_id = uuid.uuid4().hex[:12]
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                "INSERT INTO scratchpad (id, fact, tags, created_at, last_used_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (mem_id, fact, json.dumps(tags or []), now, now),
+            )
+        return mem_id
+
+    def list_facts(self, limit: int = 50) -> list[dict]:
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT id, fact, tags, created_at, last_used_at, use_count "
+                "FROM scratchpad ORDER BY last_used_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": r[0], "fact": r[1], "tags": json.loads(r[2]),
+                "created_at": r[3], "last_used_at": r[4], "use_count": r[5],
+            }
+            for r in rows
+        ]
+
+    def search_facts(self, query: str, limit: int = 10) -> list[dict]:
+        """Naive substring search over facts. Cheap, no embeddings needed."""
+        q = f"%{query.lower()}%"
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT id, fact, tags FROM scratchpad "
+                "WHERE LOWER(fact) LIKE ? ORDER BY last_used_at DESC LIMIT ?",
+                (q, limit),
+            ).fetchall()
+        return [{"id": r[0], "fact": r[1], "tags": json.loads(r[2])} for r in rows]
+
+    def forget_fact(self, mem_id: str) -> bool:
+        with sqlite3.connect(self._db) as con:
+            cur = con.execute("DELETE FROM scratchpad WHERE id = ?", (mem_id,))
+            return cur.rowcount > 0
+
+    def fact_count(self) -> int:
+        with sqlite3.connect(self._db) as con:
+            return con.execute("SELECT COUNT(*) FROM scratchpad").fetchone()[0]
+
+    # ------------------------------------------------------------------ #
+    # Working memory — short-lived session context                          #
+    # ------------------------------------------------------------------ #
+
+    def working_add(self, note: str, ttl_minutes: int = 60) -> str:
+        import uuid
+        from datetime import datetime, timezone, timedelta
+        mem_id = uuid.uuid4().hex[:12]
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(minutes=ttl_minutes)
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                "INSERT INTO working_memory (id, note, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?)",
+                (mem_id, note, now.isoformat(), expires.isoformat()),
+            )
+        return mem_id
+
+    def working_active(self) -> list[dict]:
+        """Return non-expired working-memory notes, newest first."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self._db) as con:
+            # Drop expired entries on read (lazy GC)
+            con.execute("DELETE FROM working_memory WHERE expires_at < ?", (now,))
+            rows = con.execute(
+                "SELECT id, note, created_at, expires_at "
+                "FROM working_memory ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {"id": r[0], "note": r[1], "created_at": r[2], "expires_at": r[3]}
+            for r in rows
+        ]
+
+    def working_clear(self) -> int:
+        with sqlite3.connect(self._db) as con:
+            cur = con.execute("DELETE FROM working_memory")
+            return cur.rowcount
 
     # ------------------------------------------------------------------ #
     # Internal                                                              #

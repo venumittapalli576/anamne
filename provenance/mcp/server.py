@@ -91,9 +91,65 @@ def get_stats() -> dict:
     return {
         "total_decisions": count,
         "indexed_repos": repos,
+        "facts_in_scratchpad": _store.fact_count(),
+        "working_memory_items": len(_store.working_active()),
         "status": "ready" if count > 0 else "empty",
         "hint": "Run: provenance index <repo-path>" if count == 0 else None,
     }
+
+
+@mcp.tool()
+def remember(fact: str, tags: list[str] | None = None) -> dict:
+    """
+    Store a durable fact in scratchpad memory (brain-inspired semantic memory).
+
+    Use this when the user shares something worth remembering across sessions:
+    preferences, project context, personal facts, recurring constraints.
+
+    Returns the memory id.
+    """
+    mem_id = _store.remember(fact, tags=tags)
+    return {"id": mem_id, "stored": fact, "tags": tags or []}
+
+
+@mcp.tool()
+def list_facts(limit: int = 30) -> list[dict]:
+    """
+    List durable facts in scratchpad memory, most-recently-used first.
+    Useful for getting a quick view of what the user has asked you to remember.
+    """
+    return _store.list_facts(limit=limit)
+
+
+@mcp.tool()
+def forget_fact(memory_id: str) -> dict:
+    """Forget a specific scratchpad fact by id."""
+    ok = _store.forget_fact(memory_id)
+    return {"id": memory_id, "removed": ok}
+
+
+@mcp.tool()
+def working_memory_add(note: str, ttl_minutes: int = 60) -> dict:
+    """
+    Add a short-lived note to working memory (auto-expires).
+
+    Use for session-specific context: 'currently debugging the login flow',
+    'testing PR #42', 'the user is in a hurry'. Decays automatically.
+    """
+    mem_id = _store.working_add(note, ttl_minutes=ttl_minutes)
+    return {"id": mem_id, "note": note, "ttl_minutes": ttl_minutes}
+
+
+@mcp.tool()
+def working_memory_active() -> list[dict]:
+    """Return active (non-expired) working memory items, newest first."""
+    return _store.working_active()
+
+
+@mcp.tool()
+def search_facts(query: str, limit: int = 10) -> list[dict]:
+    """Substring search over scratchpad facts (fast, no embeddings)."""
+    return _store.search_facts(query, limit=limit)
 
 
 def run() -> None:
