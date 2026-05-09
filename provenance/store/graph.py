@@ -214,6 +214,25 @@ class DecisionStore:
             cur = con.execute("DELETE FROM scratchpad WHERE id = ?", (mem_id,))
             return cur.rowcount > 0
 
+    def touch_facts(self, mem_ids: list[str]) -> None:
+        """Mark facts as used (ACT-R-style activation tracking).
+
+        Updates last_used_at and increments use_count. Lets future ranking
+        prefer facts that are recently/frequently relevant.
+        """
+        if not mem_ids:
+            return
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        placeholders = ",".join("?" * len(mem_ids))
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                f"UPDATE scratchpad "
+                f"SET last_used_at = ?, use_count = use_count + 1 "
+                f"WHERE id IN ({placeholders})",
+                [now, *mem_ids],
+            )
+
     def fact_count(self) -> int:
         with sqlite3.connect(self._db) as con:
             return con.execute("SELECT COUNT(*) FROM scratchpad").fetchone()[0]

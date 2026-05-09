@@ -230,16 +230,59 @@ def ask(
 
 @app.command()
 def remember(
-    fact: str = typer.Argument(..., help="A fact to add to scratchpad memory"),
+    fact: str = typer.Argument(..., help="A fact (or long block) to remember"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Tags (repeatable)"),
+    distill: bool = typer.Option(
+        False, "--distill", "-d",
+        help="Use LLM to extract multiple structured facts from long input "
+             "(LIGHT-style key-value distillation)"
+    ),
 ) -> None:
-    """Store a fact in scratchpad memory (durable, brain-inspired semantic memory)."""
+    """Store a fact in scratchpad memory.
+
+    Short text -> stored verbatim.
+    Long text + --distill -> LLM extracts multiple structured facts.
+    """
     from provenance.store.graph import DecisionStore
     store = DecisionStore()
-    mem_id = store.remember(fact, tags=tag or None)
-    console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {fact}")
-    if tag:
-        console.print(f"[dim]  tags: {', '.join(tag)}[/dim]")
+
+    if distill:
+        _require_api_key()
+        from provenance.llm import LLMClient
+        llm = LLMClient()
+        prompt = (
+            "Extract durable, atomic facts from the text below. Each fact "
+            "should be a single self-contained statement that's still useful "
+            "weeks from now. Skip filler, opinions, and ephemeral details.\n\n"
+            f"Text:\n{fact}\n\n"
+            "Return ONLY a JSON array of strings. Example:\n"
+            '["I prefer Python over Go", "I work in Pacific time zone"]\n\n'
+            "JSON array:"
+        )
+        try:
+            import json
+            raw = llm.complete(prompt, max_tokens=512).text.strip()
+            # Strip code fence if present
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                if raw.startswith("json"):
+                    raw = raw[4:].strip()
+            extracted = json.loads(raw)
+            if not isinstance(extracted, list):
+                raise ValueError("Expected JSON array")
+        except Exception as e:
+            console.print(f"[yellow]Distill failed ({e}), storing as one fact.[/yellow]")
+            extracted = [fact]
+
+        for f in extracted:
+            mem_id = store.remember(f.strip(), tags=tag or None)
+            console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {f}")
+        console.print(f"\n[dim]Stored {len(extracted)} fact(s) from input.[/dim]")
+    else:
+        mem_id = store.remember(fact, tags=tag or None)
+        console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {fact}")
+        if tag:
+            console.print(f"[dim]  tags: {', '.join(tag)}[/dim]")
 
 
 @app.command()
