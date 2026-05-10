@@ -187,3 +187,36 @@ def test_working_expired_not_returned(store):
         )
     active = store.working_active()
     assert not any(w["id"] == mid for w in active)
+
+
+# ------------------------------------------------------------------ #
+# list_all_decisions                                                    #
+# ------------------------------------------------------------------ #
+
+def test_list_all_decisions_empty(store):
+    assert store.list_all_decisions() == []
+
+
+def test_list_all_decisions_returns_all(store):
+    from anamne.models import Decision
+    for i in range(3):
+        d = Decision(
+            content=f"Decision {i}", why="reason",
+            source_type="commit", source_ref=f"ref{i}",
+            source_author="alice",
+        )
+        store.add(d)
+    decisions = store.list_all_decisions()
+    assert len(decisions) == 3
+
+
+def test_list_all_decisions_respects_limit(store):
+    from anamne.models import Decision
+    for i in range(5):
+        store.add(Decision(
+            content=f"Dec {i}", why="r",
+            source_type="commit", source_ref=f"r{i}",
+            source_author="a",
+        ))
+    decisions = store.list_all_decisions(limit=2)
+    assert len(decisions) == 2

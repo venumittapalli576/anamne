@@ -1,12 +1,30 @@
 ﻿"""
-anamne CLI - The living memory of why your code exists.
+anamne CLI - Brain-inspired personal memory layer for AI tools.
 
-Commands:
-  init    - set up anamne for a project
-  index   - read git history and build the knowledge graph
-  ask     - ask why something exists (the main demo)
-  status  - show knowledge base stats
-  mcp     - start the MCP server for Cursor / Claude Code
+Episodic memory:
+  init              - interactive setup wizard (picks model, writes .env, indexes)
+  index             - read git history and build the episodic knowledge graph
+  ask               - cross-layer recall with citations (LIGHT + ACC)
+  status            - show knowledge base stats
+
+Scratchpad (durable facts):
+  remember          - store a fact; --distill uses LLM to extract many from long text
+  search            - search facts directly (no API key required, ACT-R ranked)
+  recall            - full cross-layer recall (needs API key)
+  forget            - delete a specific fact
+  facts             - list all scratchpad facts
+  journal           - timestamped journal entry
+  import-chat       - extract facts from exported AI conversations
+  capture-clipboard - save clipboard text as a fact
+  consolidate       - merge redundant facts with LLM
+  export            - backup all memories to JSON or Markdown
+
+Working memory (session-scoped):
+  working           - add/list/clear short-lived context notes
+
+Server:
+  mcp               - start MCP server for Cursor / Claude Code
+  mcp-server        - alias for mcp
 """
 
 from __future__ import annotations
@@ -285,8 +303,8 @@ def recall(
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
-    # Scratchpad — direct, no LLM call needed
-    facts = store.search_facts(query, limit=5)
+    # Scratchpad — ACT-R ranked, no LLM call needed
+    facts = store.search_facts_ranked(query, limit=5)
     if facts:
         console.print("\n[bold cyan]From scratchpad:[/bold cyan]")
         for f in facts:
@@ -599,6 +617,253 @@ def _parse_chat_json(raw: str, source: str) -> str:
 
 
 @app.command()
+def search(
+    query: str = typer.Argument(..., help="Search term"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
+    no_rank: bool = typer.Option(
+        False, "--no-rank", help="Skip ACT-R ranking, use raw recency order"
+    ),
+) -> None:
+    """Search scratchpad facts directly — no LLM, no API key required.
+
+    Results are ranked by ACT-R activation (recency + frequency of use)
+    so the most relevant facts surface first. Use --no-rank for raw order.
+
+    Examples:
+      anamne search postgres
+      anamne search "python preference" --limit 5
+    """
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+
+    if no_rank:
+        results = store.search_facts(query, limit=limit)
+    else:
+        results = store.search_facts_ranked(query, limit=limit)
+
+    if not results:
+        console.print(f"[dim]No scratchpad facts matching '[bold]{query}[/bold]'.[/dim]")
+        console.print(
+            "Try [bold]anamne remember \"...\"[/bold] to add facts, "
+            "or [bold]anamne ask \"...\"[/bold] to query episodic memory."
+        )
+        return
+
+    console.print(f"\n[bold]{len(results)} result(s) for '[cyan]{query}[/cyan]':[/bold]\n")
+    for f in results:
+        tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f.get("tags") else ""
+        console.print(f"  [cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+    console.print()
+
+
+@app.command()
+def export(
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="File to write (default: print to stdout)"
+    ),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json | markdown"
+    ),
+    no_episodic: bool = typer.Option(False, "--no-episodic", help="Skip episodic memory"),
+    no_facts: bool = typer.Option(False, "--no-facts", help="Skip scratchpad facts"),
+    no_working: bool = typer.Option(False, "--no-working", help="Skip working memory"),
+) -> None:
+    """Export all memories to JSON or Markdown for backup or migration.
+
+    Examples:
+      anamne export --output backup.json
+      anamne export --format markdown --output memories.md
+      anamne export --no-episodic --output facts-only.json
+    """
+    import json as _json
+    from datetime import date
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+
+    if fmt == "markdown":
+        lines: list[str] = [
+            f"# ANAMNE Memory Export",
+            f"*Exported {date.today().isoformat()}*\n",
+        ]
+
+        if not no_facts:
+            facts = store.list_facts(limit=10_000)
+            lines.append(f"## Scratchpad Facts ({len(facts)})\n")
+            for f in facts:
+                tag_str = f" _{', '.join(f['tags'])}_" if f.get("tags") else ""
+                lines.append(f"- **{f['id']}**: {f['fact']}{tag_str}")
+            lines.append("")
+
+        if not no_working:
+            working_items = store.working_active()
+            lines.append(f"## Working Memory ({len(working_items)} active)\n")
+            for w in working_items:
+                lines.append(f"- {w['note']} *(expires {w['expires_at']})*")
+            lines.append("")
+
+        if not no_episodic:
+            decisions = store.list_all_decisions(limit=10_000)
+            lines.append(f"## Episodic Memory ({len(decisions)} decisions)\n")
+            for d in decisions:
+                lines.append(
+                    f"### {d.content}\n"
+                    f"**Why:** {d.why}  \n"
+                    f"**Source:** {d.source_type} `{d.short_ref}` "
+                    f"by {d.source_author} ({d.created_at.strftime('%Y-%m-%d')})  \n"
+                    f"**Files:** {', '.join(d.file_paths[:4]) or 'unknown'}\n"
+                )
+
+        content = "\n".join(lines)
+
+    else:  # json
+        payload: dict = {"exported_at": date.today().isoformat(), "version": "0.2.0"}
+
+        if not no_facts:
+            payload["scratchpad_facts"] = store.list_facts(limit=10_000)
+
+        if not no_working:
+            payload["working_memory"] = store.working_active()
+
+        if not no_episodic:
+            payload["episodic_decisions"] = [
+                d.to_dict() for d in store.list_all_decisions(limit=10_000)
+            ]
+
+        content = _json.dumps(payload, indent=2, default=str)
+
+    if output:
+        output.write_text(content, encoding="utf-8")
+        console.print(f"[green]Exported[/green] to [bold]{output}[/bold]")
+    else:
+        console.print(content)
+
+
+@app.command(name="capture-clipboard")
+def capture_clipboard(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show clipboard without storing"
+    ),
+    distill: bool = typer.Option(
+        False, "--distill", "-d",
+        help="Use LLM to extract structured facts from the clipboard text"
+    ),
+) -> None:
+    """Read the clipboard and offer to save it as a scratchpad fact.
+
+    Useful for quickly capturing something interesting you've copied — a quote,
+    a decision, a snippet of context — without switching to another app.
+
+    With --distill, the LLM extracts multiple atomic facts from longer text.
+
+    Examples:
+      anamne capture-clipboard
+      anamne capture-clipboard --distill
+      anamne capture-clipboard --dry-run
+    """
+    text = _read_clipboard()
+    if not text:
+        console.print("[yellow]Clipboard is empty or could not be read.[/yellow]")
+        raise typer.Exit(1)
+
+    text = text.strip()
+    preview = text[:300] + ("..." if len(text) > 300 else "")
+    console.print(f"\n[bold]Clipboard ({len(text)} chars):[/bold]\n{preview}\n")
+
+    if dry_run:
+        console.print("[yellow]Dry run — nothing stored.[/yellow]")
+        return
+
+    if distill:
+        _require_api_key()
+        from anamne.store.graph import DecisionStore
+        store = DecisionStore()
+        from anamne.llm import LLMClient
+        import json as _json
+        llm = LLMClient()
+        prompt = (
+            "Extract durable, atomic facts from the text below. Each fact "
+            "should be a single self-contained statement useful weeks from now.\n\n"
+            f"Text:\n{text[:8000]}\n\n"
+            'Return ONLY a JSON array of strings. Example: ["fact one", "fact two"]\n'
+            "JSON array:"
+        )
+        try:
+            raw = llm.complete(prompt, max_tokens=512).text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                if raw.startswith("json"):
+                    raw = raw[4:].strip()
+            extracted = _json.loads(raw)
+            if not isinstance(extracted, list):
+                raise ValueError("Expected list")
+        except Exception as e:
+            console.print(f"[yellow]Distill failed ({e}), storing as one fact.[/yellow]")
+            extracted = [text]
+
+        for f in extracted:
+            mem_id = store.remember(f.strip(), tags=["clipboard"])
+            console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {f}")
+        console.print(f"\n[dim]Stored {len(extracted)} fact(s).[/dim]")
+
+    else:
+        if not typer.confirm("Remember this?", default=True):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+        from anamne.store.graph import DecisionStore
+        store = DecisionStore()
+        mem_id = store.remember(text[:2000], tags=["clipboard"])
+        console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]")
+
+
+def _read_clipboard() -> str:
+    """Read text from the system clipboard. Returns empty string on failure."""
+    # Try pyperclip first (cross-platform, optional dep)
+    try:
+        import pyperclip  # type: ignore
+        return pyperclip.paste() or ""
+    except ImportError:
+        pass
+
+    # Windows fallback via PowerShell
+    import platform
+    if platform.system() == "Windows":
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["powershell", "-command", "Get-Clipboard"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return result.stdout.strip()
+        except Exception:
+            pass
+
+    # macOS fallback via pbpaste
+    if platform.system() == "Darwin":
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["pbpaste"], capture_output=True, text=True, timeout=5
+            )
+            return result.stdout
+        except Exception:
+            pass
+
+    # Linux fallback via xclip/xsel
+    if platform.system() == "Linux":
+        for cmd in [["xclip", "-selection", "clipboard", "-o"], ["xsel", "--clipboard", "--output"]]:
+            try:
+                import subprocess
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    return result.stdout
+            except Exception:
+                pass
+
+    return ""
+
+
+@app.command()
 def working(
     note: Optional[str] = typer.Argument(None, help="Note to add (omit to list)"),
     ttl: int = typer.Option(60, "--ttl", help="Minutes until auto-expire"),
@@ -668,7 +933,6 @@ def status() -> None:
         "[green]set[/green]"
         if (cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here")
            or cfg.gemini_api_key
-           or cfg.model_tier() == "ollama"
         else "[red]missing[/red]",
     )
 

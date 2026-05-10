@@ -171,6 +171,15 @@ class DecisionStore:
         with sqlite3.connect(self._db) as con:
             return con.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
 
+    def list_all_decisions(self, limit: int = 10_000) -> list[Decision]:
+        """Return all stored decisions ordered by created_at DESC."""
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT * FROM decisions ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row(r) for r in rows]
+
     def all_repos(self) -> list[str]:
         with sqlite3.connect(self._db) as con:
             rows = con.execute(

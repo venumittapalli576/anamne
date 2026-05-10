@@ -1,4 +1,4 @@
-﻿# ANAMNE — Roadmap
+# ANAMNE — Roadmap
 
 A local-first, brain-inspired memory layer for AI users. Personal open-source project. MIT.
 
@@ -26,12 +26,21 @@ A local-first, brain-inspired memory layer for AI users. Personal open-source pr
 | Three-layer memory (episodic/scratchpad/working) | LIGHT (arXiv 2510.27246) | ✅ |
 | Cross-layer recall with citation | LIGHT retrieval design | ✅ |
 | Layer-conflict resolution priority | LIGHT prompt design | ✅ |
-| ACT-R activation tracking (last_used + use_count) | ACT-R cognitive arch | ✅ |
+| ACT-R real decay formula (`A_i = ln(Σ t_j^-d)`) | ACT-R (Anderson & Lebiere 1998) | ✅ |
+| `retrieval_log` table — every access timestamped | ACT-R implementation | ✅ |
+| `search_facts_ranked()` — re-rank by activation | ACT-R + LIGHT | ✅ |
 | LLM-based fact distillation (`remember --distill`) | LIGHT key-value extraction | ✅ |
 | Working memory with TTL decay | Beyond LIGHT | ✅ |
 | Bounded context compression (top-K verbatim + tail summary) | Agent Cognitive Compressor | ✅ |
 | Scratchpad consolidation (`anamne consolidate`) | ACC + sleep-phase consolidation | ✅ |
-| Full MCP tool surface (11 tools) | — | ✅ |
+| Full MCP tool surface (11 tools, all ACT-R ranked) | — | ✅ |
+| `anamne journal` — timestamped quick entry | Phase 2 capture | ✅ |
+| `anamne import-chat` — Claude/ChatGPT JSON extraction | Phase 2 capture | ✅ |
+| `anamne search` — direct scratchpad search, no API key | Usability | ✅ |
+| `anamne export` — JSON/Markdown backup | Portability | ✅ |
+| `anamne capture-clipboard` — clipboard -> scratchpad | Phase 2 capture | ✅ |
+| Test suite (31 tests, 100% pass) | Quality | ✅ |
+| GitHub Actions CI | Quality | ✅ |
 
 ---
 
@@ -43,20 +52,14 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 2 — Better Capture (next)
+## Phase 3 — Polish (next)
 
-- **Clipboard capture** — `anamne capture-clipboard` watches and offers to remember interesting things
-- **AI conversation import** — point at exported Claude / ChatGPT / Cursor logs, extract memories
-- **Manual journal entry** — quick CLI to log a thought before it's lost
-
----
-
-## Phase 3 — Polish
-
-- **Web UI** — simple browser view of all memories, filterable
-- **Browser extension** — auto-suggest "remember this?" for important things you read
-- **ACT-R decay scoring** — proper temporal decay formula (not just last_used recency)
-- **Periodic consolidation cron** — auto-consolidate facts on a schedule (analog of sleep)
+- **Web UI** — simple browser view of all memories (read-only, filterable by tag/date)
+- **Browser extension** — "Remember this?" prompt on pages you read
+- **Periodic auto-consolidation** — `anamne watch` daemon that consolidates on a schedule
+- **Semantic scratchpad search** — embed facts into ChromaDB for semantic (not just substring) search
+- **Fact versioning** — track history of merged/updated facts for auditability
+- **`anamne sync`** — re-index a repo incrementally (only new commits since last run)
 
 ---
 
@@ -76,14 +79,17 @@ Things explicitly out of scope:
 - Quality depends on what you capture. Garbage in, garbage out.
 - The "brain-inspired" framing is a useful metaphor, not a neuroscience claim.
 - Solo project. Bug reports may sit. Don't depend on this in production.
-- Existing competitors (Mem0, Supermemory, MemPalace) are well-funded; this is the open-source, local-first alternative for individuals.
+- Existing competitors (Mem0, Supermemory, MemPalace) are well-funded; this is the open-source,
+  local-first alternative for individuals.
+- `capture-clipboard` uses platform-specific fallbacks (PowerShell/pbpaste/xclip).
+  For the most reliable cross-platform clipboard support, `pip install pyperclip`.
 
 ---
 
 ## Inspired By
 
 - **LIGHT** ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246)) — three-layer memory framework
-- **ACT-R Memory Architecture** — temporal decay + semantic activation
+- **ACT-R Memory Architecture** — temporal decay + semantic activation (Anderson & Lebiere 1998)
 - **Agent Cognitive Compressor** — bounded compressed state
 - **Hippocampal indexing theory** — long-term storage as compressed patterns
 - **Lore protocol** ([arXiv 2603.15566](https://arxiv.org/abs/2603.15566)) — git-as-knowledge-protocol
@@ -95,7 +101,8 @@ Things explicitly out of scope:
 ```bash
 git clone https://github.com/venumittapalli576/anamne
 cd anamne
-pip install -e .
+pip install -e ".[dev]"
+pytest tests/
 ```
 
 PRs welcome. Keep scope small. Reject feature creep.

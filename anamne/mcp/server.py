@@ -149,8 +149,8 @@ def working_memory_active() -> list[dict]:
 
 @mcp.tool()
 def search_facts(query: str, limit: int = 10) -> list[dict]:
-    """Substring search over scratchpad facts (fast, no embeddings)."""
-    return _store.search_facts(query, limit=limit)
+    """Substring search over scratchpad facts, ranked by ACT-R activation (recency + frequency)."""
+    return _store.search_facts_ranked(query, limit=limit)
 
 
 @mcp.tool()
