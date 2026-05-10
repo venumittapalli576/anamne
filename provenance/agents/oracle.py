@@ -1,14 +1,17 @@
 """
 Oracle Agent - cross-layer memory recall.
 
-Implements LIGHT-inspired three-layer retrieval (arXiv 2510.27246):
-- Episodic memory   (long-term decisions, ChromaDB semantic search)
-- Scratchpad facts  (durable user-stated facts, substring search)
-- Working memory    (short-lived session context, recency-based)
+Implements a hybrid of two 2026 frameworks:
 
-The agent gathers candidates from all three layers, formats them into a
-single context block with provenance, and asks the LLM to synthesise a
-cited answer using ONLY that context.
+LIGHT (arXiv 2510.27246) — three-layer retrieval:
+  - Episodic memory   (long-term decisions, ChromaDB semantic search)
+  - Scratchpad facts  (durable user-stated facts, substring search)
+  - Working memory    (short-lived session context, recency-based)
+
+Agent Cognitive Compressor (ACC) — bounded context:
+  Top-K episodic results are kept verbatim; the tail is compressed into
+  a compact summary so the Oracle prompt never balloons as the database grows.
+  This is the core idea from the "bounded compressed state" design in ACC.
 """
 
 from __future__ import annotations
@@ -26,6 +29,10 @@ from provenance.store.graph import DecisionStore
 
 console = Console()
 
+# How many episodic items to keep verbatim vs. compress (ACC-style)
+_VERBATIM_K = 3
+_COMPRESS_AFTER = _VERBATIM_K  # anything beyond this is compressed
+
 _ORACLE_PROMPT = """\
 You are PROVENANCE Oracle - you answer questions using only the user's \
 personal memory layers below. You combine three brain-inspired memory types \
@@ -40,6 +47,7 @@ SCRATCHPAD FACTS (durable, user-stated truths):
 EPISODIC MEMORY (long-term, captured from code/docs/history):
 {decisions}
 
+{compressed_section}\
 ---
 
 Question: {question}
@@ -66,6 +74,27 @@ Structure your answer:
 (staleness or contradictions — omit this section if there are none)
 """
 
+_COMPRESS_PROMPT = """\
+You are a memory compressor. Summarise the following architectural decisions \
+into ONE compact paragraph (3-5 sentences). Preserve the key facts, dates, \
+authors, and file references. Drop all repetition and filler.
+
+Decisions to compress:
+{items}
+
+Compact summary (plain text, no markdown):"""
+
+_CONSOLIDATE_PROMPT = """\
+You are a memory curator. Below are {n} related facts that a user has stored. \
+Merge them into a single, concise, self-contained statement that preserves \
+all useful information. Drop redundancy. Keep specific names, dates, and \
+constraints. Reply with ONLY the merged fact — no explanation, no markdown.
+
+Facts to merge:
+{facts}
+
+Merged fact:"""
+
 
 class OracleAgent:
     def __init__(self, store: Optional[DecisionStore] = None):
@@ -81,11 +110,11 @@ class OracleAgent:
     def ask(
         self,
         question: str,
-        n_episodic: int = 6,
+        n_episodic: int = 8,
         n_facts: int = 8,
         n_working: int = 10,
     ) -> str:
-        """Cross-layer recall. Returns a markdown answer."""
+        """Cross-layer recall with ACC-style bounded context. Returns markdown."""
         # 1. Pull candidates from all three layers
         episodic = self._store.search(question, n_results=n_episodic)
         facts = self._store.search_facts(question, limit=n_facts)
@@ -106,11 +135,24 @@ class OracleAgent:
         if facts:
             self._store.touch_facts([f["id"] for f in facts])
 
-        # 3. Format each layer with explicit provenance
+        # 3. ACC-style bounded context: split episodic into verbatim + tail
+        verbatim_ep = episodic[:_VERBATIM_K]
+        tail_ep = episodic[_COMPRESS_AFTER:]
+
+        compressed_section = ""
+        if tail_ep:
+            summary = self._compress_tail(tail_ep, question)
+            compressed_section = (
+                f"BACKGROUND CONTEXT (compressed from {len(tail_ep)} lower-ranked episodic "
+                f"items — ACC-style bounded state):\n{summary}\n\n"
+            )
+
+        # 4. Format each layer with explicit provenance
         prompt = _ORACLE_PROMPT.format(
             working=self._format_working(working),
             facts=self._format_facts(facts),
-            decisions=self._format_decisions(episodic),
+            decisions=self._format_decisions(verbatim_ep),
+            compressed_section=compressed_section,
             question=question,
         )
 
@@ -140,6 +182,80 @@ class OracleAgent:
                 padding=(1, 2),
             )
         )
+
+    def consolidate_facts(
+        self,
+        similarity_threshold: float = 0.6,
+        min_cluster: int = 2,
+        dry_run: bool = False,
+    ) -> list[dict]:
+        """
+        Merge semantically redundant scratchpad facts (ACC-style consolidation).
+
+        Clusters facts using keyword overlap (cheap, no embeddings), then
+        merges each cluster into a single fact via LLM. Returns a list of
+        merge records: {merged: str, replaced: list[str]}.
+
+        If dry_run=True, returns the plan without writing to the store.
+        """
+        all_facts = self._store.list_facts(limit=500)
+        if len(all_facts) < min_cluster:
+            return []
+
+        clusters = _cluster_by_overlap(all_facts, threshold=similarity_threshold)
+        merges = []
+
+        for cluster in clusters:
+            if len(cluster) < min_cluster:
+                continue
+
+            fact_texts = "\n".join(f"- {f['fact']}" for f in cluster)
+            merged = self._llm.complete(
+                _CONSOLIDATE_PROMPT.format(n=len(cluster), facts=fact_texts),
+                max_tokens=256,
+            ).text.strip()
+
+            merge_record = {
+                "merged": merged,
+                "replaced": [f["id"] for f in cluster],
+                "replaced_facts": [f["fact"] for f in cluster],
+            }
+            merges.append(merge_record)
+
+            if not dry_run:
+                # Delete originals, write merged
+                for f in cluster:
+                    self._store.forget_fact(f["id"])
+                self._store.remember(
+                    merged,
+                    tags=list({t for f in cluster for t in f.get("tags", [])}),
+                )
+
+        return merges
+
+    # ------------------------------------------------------------------ #
+    # ACC — bounded context compression                                     #
+    # ------------------------------------------------------------------ #
+
+    def _compress_tail(self, tail: list[Decision], question: str) -> str:
+        """
+        Compress lower-ranked episodic items into a single paragraph.
+
+        This implements the ACC 'bounded compressed state' idea:
+        the top-K items are presented verbatim (highest signal);
+        the rest are summarised to stay within the context budget.
+        """
+        items_text = "\n\n".join(
+            f"Decision {i + 1}: {d.content}\n"
+            f"  Why: {d.why}\n"
+            f"  Source: {d.source_type} {d.short_ref} by {d.source_author}"
+            for i, d in enumerate(tail)
+        )
+        result = self._llm.complete(
+            _COMPRESS_PROMPT.format(items=items_text),
+            max_tokens=300,
+        )
+        return result.text.strip()
 
     # ------------------------------------------------------------------ #
     # Layer formatters                                                      #
@@ -180,3 +296,46 @@ class OracleAgent:
             f"[working] {w['note']}  (added {w['created_at']})"
             for w in working
         )
+
+
+# ------------------------------------------------------------------ #
+# Clustering helper (no embeddings — cheap keyword overlap)            #
+# ------------------------------------------------------------------ #
+
+def _cluster_by_overlap(
+    facts: list[dict],
+    threshold: float = 0.6,
+) -> list[list[dict]]:
+    """
+    Greedy single-linkage clustering by Jaccard word overlap.
+
+    Not perfect, but O(n²) is fine for hundreds of scratchpad facts,
+    and it doesn't need an embedding call.
+    """
+    import re
+
+    def tokens(text: str) -> set[str]:
+        return {w.lower() for w in re.findall(r"\w+", text) if len(w) > 3}
+
+    def jaccard(a: set, b: set) -> float:
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    token_sets = [tokens(f["fact"]) for f in facts]
+    n = len(facts)
+    visited = [False] * n
+    clusters: list[list[dict]] = []
+
+    for i in range(n):
+        if visited[i]:
+            continue
+        cluster = [facts[i]]
+        visited[i] = True
+        for j in range(i + 1, n):
+            if not visited[j] and jaccard(token_sets[i], token_sets[j]) >= threshold:
+                cluster.append(facts[j])
+                visited[j] = True
+        clusters.append(cluster)
+
+    return clusters

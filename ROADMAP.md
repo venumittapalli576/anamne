@@ -17,29 +17,33 @@ A local-first, brain-inspired memory layer for AI users. Personal open-source pr
 
 ---
 
-## Direction Change
+## What's Built (v0.2.0)
 
-Originally PROVENANCE captured "WHY decisions were made" from git. We discovered Repowise (and others) already do this well in the WHY-layer category.
+**Pivot:** brain-inspired personal memory layer for AI users, grounded in two 2026 research papers.
 
-**v0.2 pivots PROVENANCE into a brain-inspired personal memory layer for AI users.** The core architecture (bi-temporal store + semantic retrieval + MCP server) maps directly onto the LIGHT memory framework from 2026 research. We're reframing what we already built rather than starting over.
-
----
-
-## Phase 1 — Memory Architecture (next 2 weeks)
-
-**Goal:** Implement the three LIGHT layers cleanly.
-
-- **Episodic memory layer** — refactor existing decisions into the long-term episodic store. Already 90% done.
-- **Scratchpad layer** — explicit `remember()` API for distilled facts. New table, simple.
-- **Working memory layer** — short-term session state with TTL. New, small. Stores "what I'm working on right now."
-- **Cross-layer recall** — Oracle agent queries all three layers and weighs them properly. Mostly refactor.
-- **`provenance remember` CLI command** — add fact to scratchpad
-- **`provenance recall` CLI command** — generalized version of current `ask`
-- **`forget(memory_id)` MCP tool** — explicit deletion matching brain-style decay
+| Feature | Source | Status |
+|---|---|---|
+| Three-layer memory (episodic/scratchpad/working) | LIGHT (arXiv 2510.27246) | ✅ |
+| Cross-layer recall with citation | LIGHT retrieval design | ✅ |
+| Layer-conflict resolution priority | LIGHT prompt design | ✅ |
+| ACT-R activation tracking (last_used + use_count) | ACT-R cognitive arch | ✅ |
+| LLM-based fact distillation (`remember --distill`) | LIGHT key-value extraction | ✅ |
+| Working memory with TTL decay | Beyond LIGHT | ✅ |
+| Bounded context compression (top-K verbatim + tail summary) | Agent Cognitive Compressor | ✅ |
+| Scratchpad consolidation (`provenance consolidate`) | ACC + sleep-phase consolidation | ✅ |
+| Full MCP tool surface (11 tools) | — | ✅ |
 
 ---
 
-## Phase 2 — Better Capture (after Phase 1)
+## Direction
+
+Originally PROVENANCE captured "WHY decisions were made" from git. Repowise (and others) already do
+this well. **v0.2 pivots to a brain-inspired personal memory layer for AI users.** The architecture
+maps directly onto the LIGHT memory framework and the ACC bounded-state design from 2026 research.
+
+---
+
+## Phase 2 — Better Capture (next)
 
 - **Clipboard capture** — `provenance capture-clipboard` watches and offers to remember interesting things
 - **AI conversation import** — point at exported Claude / ChatGPT / Cursor logs, extract memories
@@ -51,8 +55,8 @@ Originally PROVENANCE captured "WHY decisions were made" from git. We discovered
 
 - **Web UI** — simple browser view of all memories, filterable
 - **Browser extension** — auto-suggest "remember this?" for important things you read
-- **Better forgetting** — implement actual ACT-R-style decay (temporal decay + activation frequency)
-- **Memory consolidation** — periodic background job that merges related memories (analog of sleep)
+- **ACT-R decay scoring** — proper temporal decay formula (not just last_used recency)
+- **Periodic consolidation cron** — auto-consolidate facts on a schedule (analog of sleep)
 
 ---
 

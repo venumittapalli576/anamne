@@ -329,6 +329,76 @@ def forget(
 
 
 @app.command()
+def consolidate(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview merges without writing anything"
+    ),
+    threshold: float = typer.Option(
+        0.6, "--threshold", "-t",
+        help="Jaccard similarity threshold for grouping facts (0–1)"
+    ),
+    min_cluster: int = typer.Option(
+        2, "--min-cluster", help="Minimum cluster size to merge"
+    ),
+) -> None:
+    """Merge redundant scratchpad facts using LLM consolidation.
+
+    Scans your scratchpad for semantically similar facts, groups them,
+    and merges each group into a single clean statement. Inspired by the
+    Agent Cognitive Compressor (ACC) paper's bounded-state design and the
+    brain's sleep-phase memory consolidation.
+
+    Use --dry-run to preview what would be merged before committing.
+    """
+    _require_api_key()
+    from provenance.agents.oracle import OracleAgent
+    from provenance.store.graph import DecisionStore
+
+    store = DecisionStore()
+    fact_count = store.fact_count()
+
+    if fact_count == 0:
+        console.print("[dim]Scratchpad is empty — nothing to consolidate.[/dim]")
+        return
+
+    console.print(
+        f"\n[bold]Consolidating[/bold] {fact_count} scratchpad facts "
+        f"[dim](threshold={threshold})[/dim]...\n"
+    )
+
+    agent = OracleAgent(store=store)
+    merges = agent.consolidate_facts(
+        similarity_threshold=threshold,
+        min_cluster=min_cluster,
+        dry_run=dry_run,
+    )
+
+    if not merges:
+        console.print("[green]No redundant fact clusters found.[/green] Scratchpad looks clean.")
+        return
+
+    mode_label = "[yellow]DRY RUN[/yellow] — " if dry_run else ""
+    console.print(f"{mode_label}[bold]{len(merges)} merge(s):[/bold]\n")
+
+    for i, m in enumerate(merges, 1):
+        console.print(f"[cyan]Merge {i}:[/cyan]")
+        for fact in m["replaced_facts"]:
+            console.print(f"  [dim]- {fact}[/dim]")
+        console.print(f"  [green]→ {m['merged']}[/green]\n")
+
+    if dry_run:
+        console.print(
+            "[yellow]Dry run — nothing changed.[/yellow] "
+            "Re-run without --dry-run to apply."
+        )
+    else:
+        replaced = sum(len(m["replaced"]) for m in merges)
+        console.print(
+            f"[green]Done.[/green] Replaced {replaced} facts with {len(merges)} merged fact(s)."
+        )
+
+
+@app.command()
 def facts(
     limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
 ) -> None:

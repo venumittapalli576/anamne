@@ -152,6 +152,39 @@ def search_facts(query: str, limit: int = 10) -> list[dict]:
     return _store.search_facts(query, limit=limit)
 
 
+@mcp.tool()
+def consolidate_facts(
+    dry_run: bool = False,
+    threshold: float = 0.6,
+) -> dict:
+    """
+    Merge redundant scratchpad facts using LLM consolidation (ACC-style).
+
+    Groups semantically similar facts by keyword overlap, then merges each
+    group into a single clean statement. Inspired by the Agent Cognitive
+    Compressor's bounded-state design and sleep-phase memory consolidation.
+
+    Args:
+        dry_run: if True, returns the merge plan without writing anything.
+        threshold: Jaccard similarity threshold for grouping (0.0–1.0).
+    """
+    from provenance.agents.oracle import OracleAgent
+    agent = OracleAgent(store=_store)
+    merges = agent.consolidate_facts(similarity_threshold=threshold, dry_run=dry_run)
+    return {
+        "merges": len(merges),
+        "dry_run": dry_run,
+        "details": [
+            {
+                "merged": m["merged"],
+                "replaced_count": len(m["replaced"]),
+                "replaced_ids": m["replaced"],
+            }
+            for m in merges
+        ],
+    }
+
+
 def run() -> None:
     """Entry point - runs the MCP server via stdio (for Claude Code / Cursor).
 
