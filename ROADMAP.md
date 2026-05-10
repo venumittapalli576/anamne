@@ -93,8 +93,8 @@ Things explicitly out of scope:
 ## Contributing
 
 ```bash
-git clone https://github.com/venumittapalli576/provenance
-cd provenance
+git clone https://github.com/venumittapalli576/anamne
+cd anamne
 pip install -e .
 ```
 
