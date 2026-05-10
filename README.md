@@ -78,7 +78,6 @@ The wizard detects your API keys and picks a model. You can also set one manuall
 |---|---|---|---|
 | Gemini 2.5 Flash Lite | `GEMINI_API_KEY=...` in `.env` | Free tier | Good |
 | Claude Sonnet 4.6 | `ANTHROPIC_API_KEY=...` in `.env` | ~$0.003/commit | Best |
-| Ollama (llama3.2) | `MODEL=ollama/llama3.2` + run `ollama serve` | Free, offline | Good |
 
 Data is stored in `~/.provenance/` — SQLite + ChromaDB. Nothing leaves your machine.
 

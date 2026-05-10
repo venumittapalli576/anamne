@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-ModelTier = Literal["claude", "gemini", "ollama", "none"]
+ModelTier = Literal["claude", "gemini", "none"]
 
 
 # Look in multiple places so the MCP server (launched from any directory)
@@ -39,17 +39,14 @@ class Settings(BaseSettings):
     mcp_port: int = 8765
 
     def resolved_model(self) -> str:
-        """Pick the best available model based on what the user has set up.
-
-        Must stay consistent with provenance.llm.LLMClient defaults.
-        """
+        """Pick the best available model based on what the user has set up."""
         if self.model:
             return self.model
         if self.anthropic_api_key:
             return "claude-sonnet-4-6"
         if self.gemini_api_key:
             return "gemini-2.5-flash-lite"
-        return "ollama/llama3.2"  # fallback - assumes Ollama is installed
+        return ""
 
     def model_tier(self) -> ModelTier:
         m = self.resolved_model().lower()
@@ -57,8 +54,6 @@ class Settings(BaseSettings):
             return "claude"
         if "gemini" in m:
             return "gemini"
-        if "ollama" in m or m.startswith("llama"):
-            return "ollama"
         return "none"
 
     def has_any_key(self) -> bool:

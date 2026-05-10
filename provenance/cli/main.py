@@ -81,15 +81,13 @@ def init(
     elif cfg.gemini_api_key:
         console.print("[green]Found[/green] Gemini key - will use [cyan]Gemini 2.5 Flash[/cyan] (free tier)")
     else:
-        console.print("[yellow]No API key found.[/yellow] Three options:\n")
-        console.print("  [bold]1[/bold]  Gemini 2.5 Flash  [green](free tier - recommended)[/green]")
+        console.print("[yellow]No API key found.[/yellow] Two options:\n")
+        console.print("  [bold]1[/bold]  Gemini 2.5 Flash Lite  [green](free tier - recommended)[/green]")
         console.print("     -> Sign in at [link]https://aistudio.google.com/apikey[/link]")
-        console.print("  [bold]2[/bold]  Claude Sonnet 4.6  [dim](best quality, paid)[/dim]")
-        console.print("     -> Get a key at [link]https://platform.anthropic.com[/link]")
-        console.print("  [bold]3[/bold]  Ollama (llama3.2)  [dim](free, offline, ~4GB disk, slower)[/dim]")
-        console.print("     -> Install from [link]https://ollama.com[/link]\n")
-        choice = typer.prompt("Pick 1, 2, or 3", default="1").strip()
-        chosen = {"1": "gemini", "2": "claude", "3": "ollama"}.get(choice, "gemini")
+        console.print("  [bold]2[/bold]  Claude Sonnet 4.6       [dim](best quality, paid)[/dim]")
+        console.print("     -> Get a key at [link]https://platform.anthropic.com[/link]\n")
+        choice = typer.prompt("Pick 1 or 2", default="1").strip()
+        chosen = {"1": "gemini", "2": "claude"}.get(choice, "gemini")
 
         env_file = Path(".env")
         existing = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
@@ -104,7 +102,7 @@ def init(
                 console.print("[red]That doesn't look like a valid Anthropic key. Aborting.[/red]")
                 raise typer.Exit(1)
             existing += f"\nANTHROPIC_API_KEY={key}\n"
-        elif chosen == "gemini":
+        else:
             console.print(
                 "[dim]Tip: keys are visible while typing so you can verify the paste worked. "
                 "Press Enter when done.[/dim]"
@@ -114,13 +112,6 @@ def init(
                 console.print("[red]That doesn't look like a valid Gemini key. Aborting.[/red]")
                 raise typer.Exit(1)
             existing += f"\nGEMINI_API_KEY={key}\n"
-        else:
-            existing += "\nMODEL=ollama/llama3.2\n"
-            console.print(
-                "[green]Ollama configured.[/green] Before using PROVENANCE, ensure:\n"
-                "  1. Ollama is running: [cyan]ollama serve[/cyan]\n"
-                "  2. Model is downloaded: [cyan]ollama pull llama3.2[/cyan]"
-            )
 
         env_file.write_text(existing.lstrip() + "\n", encoding="utf-8")
         console.print("[green]Wrote[/green] [bold].env[/bold]")
@@ -701,15 +692,10 @@ def mcp_server() -> None:
     from provenance.config import get_settings
 
     cfg = get_settings()
-    has_provider = (
-        cfg.anthropic_api_key
-        or cfg.gemini_api_key
-        or (cfg.model and cfg.model.startswith("ollama/"))
-    )
-    if not has_provider:
+    if not (cfg.anthropic_api_key or cfg.gemini_api_key):
         # Stderr-only — must not pollute stdout
         sys.stderr.write(
-            "PROVENANCE MCP: no LLM provider configured.\n"
+            "PROVENANCE MCP: no LLM API key configured.\n"
             "Run `provenance init` first, then restart your MCP host.\n"
         )
         raise typer.Exit(1)

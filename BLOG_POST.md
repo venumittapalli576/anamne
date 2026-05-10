@@ -107,7 +107,6 @@ Over two days I refactored PROVENANCE from "git WHY tool" to "personal memory la
 **New capture paths** (Phase 2):
 - `provenance journal` — timestamped entry, one command, no ceremony
 - `provenance import-chat` — point at an exported Claude/ChatGPT JSON, extract durable facts
-- Ollama support for fully offline use
 
 ---
 
@@ -225,7 +224,6 @@ hiring manager than "I built X, here is the feature list."
 Phase 2 is already started:
 - `provenance import-chat` — import exported Claude/ChatGPT conversations, extract facts
 - `provenance journal` — one-command timestamped notes, no ceremony
-- Ollama support for fully offline use
 
 The interesting open question is Phase 3: **ACT-R decay**. Right now "activation" is tracked
 (last_used, use_count) but there's no actual decay formula. The real ACT-R formula is:
