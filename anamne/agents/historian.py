@@ -92,14 +92,24 @@ class HistorianAgent:
     # Public API                                                            #
     # ------------------------------------------------------------------ #
 
-    def index_repo(self, repo_path: str, max_commits: int = 500) -> int:
-        """Index a git repository. Returns number of decisions stored."""
+    def index_repo(
+        self,
+        repo_path: str,
+        max_commits: int = 500,
+        incremental: bool = False,
+    ) -> int:
+        """Index a git repository. Returns number of decisions stored.
+
+        When incremental=True, only commits not yet in indexed_commits are
+        processed. This is used by `anamne sync` to avoid redundant LLM calls.
+        """
         path = Path(repo_path).resolve()
+        repo_str = str(path)
 
         try:
             repo = git.Repo(path, search_parent_directories=True)
         except git.InvalidGitRepositoryError:
-            console.print(f"[red]✗ Not a git repository:[/red] {path}")
+            console.print(f"[red]Not a git repository:[/red] {path}")
             return 0
 
         commits = list(repo.iter_commits("HEAD", max_count=max_commits))
@@ -107,10 +117,24 @@ class HistorianAgent:
             console.print("[yellow]No commits found.[/yellow]")
             return 0
 
-        console.print(
-            f"[dim]Found [bold]{len(commits)}[/bold] commits — "
-            f"filtering and extracting decisions...[/dim]\n"
-        )
+        if incremental:
+            new_commits = [
+                c for c in commits
+                if not self._store.is_commit_indexed(repo_str, c.hexsha)
+            ]
+            if not new_commits:
+                console.print("[green]Already up to date.[/green] No new commits to index.")
+                return 0
+            console.print(
+                f"[dim]Found [bold]{len(new_commits)}[/bold] new commit(s) "
+                f"(of {len(commits)} total) — extracting decisions...[/dim]\n"
+            )
+            commits = new_commits
+        else:
+            console.print(
+                f"[dim]Found [bold]{len(commits)}[/bold] commits — "
+                f"filtering and extracting decisions...[/dim]\n"
+            )
 
         total_indexed = 0
 
@@ -126,10 +150,12 @@ class HistorianAgent:
             task = prog.add_task("Analyzing commits", total=len(commits))
 
             for commit in commits:
-                decisions = self._process_commit(commit, str(path))
+                decisions = self._process_commit(commit, repo_str)
                 if decisions:
-                    self._store.add_many(decisions, repo_path=str(path))
+                    self._store.add_many(decisions, repo_path=repo_str)
                     total_indexed += len(decisions)
+                # Always mark commit as indexed regardless of whether a decision was found
+                self._store.mark_commit_indexed(repo_str, commit.hexsha)
                 prog.advance(task)
 
         return total_indexed

@@ -50,9 +50,9 @@ console = Console()
 
 _BANNER = """[bold green]
 ╔═══════════════════════════════════════╗
-║   A N A M N E   v0.2.0       ║
-║   The living memory of why your       ║
-║   code exists.                        ║
+║   A N A M N E   v0.3.0               ║
+║   Brain-inspired personal memory      ║
+║   layer for AI tools.                 ║
 ╚═══════════════════════════════════════╝[/bold green]"""
 
 
@@ -220,6 +220,126 @@ def index(
             "[yellow]No decisions extracted.[/yellow] "
             "Commits may be too short or trivial."
         )
+
+
+@app.command()
+def sync(
+    repo: Path = typer.Argument(..., help="Path to git repository"),
+    adr_dir: Optional[Path] = typer.Option(
+        None, "--adr-dir", help="Directory containing ADR markdown files"
+    ),
+) -> None:
+    """Incrementally re-index a repository — only processes new commits.
+
+    Unlike `index`, which always scans all commits, `sync` skips commits
+    already processed and only extracts decisions from new ones. Run this
+    regularly (e.g. after pushing a batch of commits) to keep episodic
+    memory up to date without redundant LLM calls.
+
+    Example:
+      anamne sync ./my-project       # after a git pull or git commit
+    """
+    _require_api_key()
+    from anamne.agents.historian import HistorianAgent
+    from anamne.store.graph import DecisionStore
+
+    repo_path = repo.resolve()
+    store = DecisionStore()
+    already_indexed = store.indexed_commit_count(str(repo_path))
+
+    console.print(
+        f"\n[bold]Syncing[/bold] [cyan]{repo_path}[/cyan] "
+        f"[dim]({already_indexed} commits already indexed)[/dim]\n"
+    )
+
+    agent = HistorianAgent(store=store)
+    count = agent.index_repo(str(repo_path), max_commits=10_000, incremental=True)
+
+    if adr_dir and adr_dir.exists():
+        console.print(f"\n[dim]Also indexing ADRs in {adr_dir}...[/dim]")
+        count += agent.index_adr_dir(str(adr_dir), repo_path=str(repo_path))
+
+    if count > 0:
+        console.print(
+            f"\n[bold green]Done![/bold green] "
+            f"Stored [bold]{count}[/bold] new decisions  "
+            f"([dim]total: {store.count()}[/dim])\n"
+        )
+    else:
+        console.print("[green]Up to date.[/green] No new decisions found.\n")
+
+
+@app.command()
+def watch(
+    interval: int = typer.Option(
+        3600, "--interval", "-i",
+        help="Seconds between consolidation runs (default: 1 hour)"
+    ),
+    threshold: float = typer.Option(
+        0.6, "--threshold", "-t",
+        help="Jaccard similarity threshold for grouping facts (0-1)"
+    ),
+    min_cluster: int = typer.Option(
+        2, "--min-cluster", help="Minimum cluster size to merge"
+    ),
+) -> None:
+    """Periodically auto-consolidate scratchpad facts (memory maintenance daemon).
+
+    Runs `consolidate` on a schedule, merging redundant facts as they accumulate.
+    This is the 'sleep-phase consolidation' concept from the ACT-R architecture:
+    background maintenance that keeps memory clean and non-redundant over time.
+
+    Press Ctrl+C to stop.
+
+    Examples:
+      anamne watch                       # runs every hour
+      anamne watch --interval 1800       # every 30 minutes
+      anamne watch --threshold 0.5       # more aggressive merging
+    """
+    import time
+    _require_api_key()
+    from anamne.agents.oracle import OracleAgent
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    agent = OracleAgent(store=store)
+
+    console.print(
+        f"[bold green]Watch mode[/bold green] — "
+        f"consolidating every [bold]{interval}s[/bold]. "
+        f"Press [dim]Ctrl+C[/dim] to stop.\n"
+    )
+
+    run = 0
+    while True:
+        run += 1
+        fact_count = store.fact_count()
+
+        if fact_count >= min_cluster:
+            merges = agent.consolidate_facts(
+                similarity_threshold=threshold,
+                min_cluster=min_cluster,
+                dry_run=False,
+            )
+            if merges:
+                replaced = sum(len(m["replaced"]) for m in merges)
+                console.print(
+                    f"[dim][run {run}] Merged {replaced} facts into "
+                    f"{len(merges)} — {store.fact_count()} remain[/dim]"
+                )
+            else:
+                console.print(f"[dim][run {run}] {fact_count} facts — nothing to merge[/dim]")
+        else:
+            console.print(
+                f"[dim][run {run}] Only {fact_count} fact(s) — "
+                f"need {min_cluster}+ to consolidate[/dim]"
+            )
+
+        try:
+            time.sleep(interval)
+        except KeyboardInterrupt:
+            console.print("\n[dim]Watch stopped.[/dim]")
+            break
 
 
 @app.command()

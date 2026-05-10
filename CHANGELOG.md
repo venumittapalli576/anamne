@@ -4,6 +4,46 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.3.0] — 2026-05-10
+
+### Added — Phase 3 memory upgrades
+
+**Semantic scratchpad search**
+- Facts are now embedded into a dedicated ChromaDB `scratchpad` collection on write
+- `search_facts_semantic()` — embedding-based search; finds conceptually related facts
+  even when exact keywords don't match (e.g. "database" finds "PostgreSQL" facts)
+- `search_facts_ranked()` now merges substring + semantic candidates, deduplicates,
+  then re-ranks by ACT-R activation — best of both retrieval strategies
+- One-time migration: existing facts are back-filled into ChromaDB on first startup
+- `forget_fact()` now also deletes from ChromaDB scratchpad collection
+
+**Incremental indexing**
+- New `indexed_commits` SQL table tracks which commits have already been processed
+- `is_commit_indexed()`, `mark_commit_indexed()`, `indexed_commit_count()` on store
+- `HistorianAgent.index_repo(incremental=True)` skips already-indexed commits
+- New CLI command: `anamne sync <repo>` — re-indexes only new commits,
+  saving API calls when you run it after `git pull` or `git commit`
+
+**Auto-consolidation daemon**
+- New CLI command: `anamne watch` — runs `consolidate` on a configurable schedule
+  (default: every 3600s). Background memory maintenance, analog of sleep-phase
+  consolidation in cognitive science. Press Ctrl+C to stop.
+
+**New CLI commands** (search, export, capture-clipboard added in this release too)
+- `anamne search <query>` — direct ACT-R-ranked scratchpad search, no API key needed
+- `anamne export` — dump all memories to JSON or Markdown for backup/migration
+- `anamne capture-clipboard` — read clipboard and save as scratchpad fact
+
+### Fixed
+- `status` command: removed dead `ollama` reference in API key check
+- `recall` and MCP `search_facts`: upgraded to `search_facts_ranked()` (was unranked)
+
+### Tests
+- 41 tests total (was 31 → 34 → 41), all passing
+- New: semantic search (3), incremental indexing (4), list_all_decisions (3)
+
+---
+
 ## [0.2.0] — 2026-05-10
 
 ### Changed (breaking)

@@ -52,14 +52,28 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 3 — Polish (next)
+## What's Built (v0.3.0)
+
+| Feature | Status |
+|---|---|
+| Semantic scratchpad search (ChromaDB `scratchpad` collection) | ✅ |
+| Hybrid ranked search (substring + semantic + ACT-R activation) | ✅ |
+| One-time migration of existing facts into ChromaDB | ✅ |
+| Incremental indexing (`indexed_commits` table, `anamne sync`) | ✅ |
+| `anamne watch` — periodic auto-consolidation daemon | ✅ |
+| `anamne search` — direct ranked search, no API key | ✅ |
+| `anamne export` — JSON/Markdown memory backup | ✅ |
+| `anamne capture-clipboard` — clipboard -> scratchpad | ✅ |
+
+---
+
+## Phase 4 — Polish (next)
 
 - **Web UI** — simple browser view of all memories (read-only, filterable by tag/date)
 - **Browser extension** — "Remember this?" prompt on pages you read
-- **Periodic auto-consolidation** — `anamne watch` daemon that consolidates on a schedule
-- **Semantic scratchpad search** — embed facts into ChromaDB for semantic (not just substring) search
 - **Fact versioning** — track history of merged/updated facts for auditability
-- **`anamne sync`** — re-index a repo incrementally (only new commits since last run)
+- **`anamne forget-all`** — nuclear option: wipe a specific memory layer or all memories
+- **Tag-based filtering** in `facts` and `search` commands
 
 ---
 

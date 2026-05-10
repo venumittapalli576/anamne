@@ -2,7 +2,10 @@
 Decision store: SQLite (temporal/relational) + ChromaDB (semantic search).
 
 SQLite holds the full decision records with temporal metadata.
-ChromaDB holds the embeddings for semantic similarity search.
+ChromaDB holds the embeddings for semantic similarity search on TWO collections:
+  - 'decisions'  — episodic memory (git commits, ADRs)
+  - 'scratchpad' — semantic search over durable facts (Phase 3 upgrade)
+
 Both are embedded — zero external services required.
 """
 
@@ -75,6 +78,16 @@ CREATE TABLE IF NOT EXISTS retrieval_log (
 );
 CREATE INDEX IF NOT EXISTS idx_retrieval_fact ON retrieval_log(fact_id);
 CREATE INDEX IF NOT EXISTS idx_retrieval_time ON retrieval_log(retrieved_at);
+
+-- Incremental indexing: tracks which commits have already been processed.
+-- Enables `anamne sync` to skip already-indexed commits instead of re-scanning.
+CREATE TABLE IF NOT EXISTS indexed_commits (
+    repo_path    TEXT NOT NULL,
+    commit_hash  TEXT NOT NULL,
+    indexed_at   TEXT NOT NULL,
+    PRIMARY KEY (repo_path, commit_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_commit_repo ON indexed_commits(repo_path);
 """
 
 
@@ -93,10 +106,17 @@ class DecisionStore:
         self._chroma = chromadb.PersistentClient(
             path=str(self.data_dir / "chroma")
         )
+        _ef = DefaultEmbeddingFunction()
         self._col = self._chroma.get_or_create_collection(
             name="decisions",
-            embedding_function=DefaultEmbeddingFunction(),
+            embedding_function=_ef,
         )
+        # Phase 3: semantic search over scratchpad facts (not just substring)
+        self._scratch_col = self._chroma.get_or_create_collection(
+            name="scratchpad",
+            embedding_function=_ef,
+        )
+        self._migrate_scratchpad_to_chroma()
 
     # ------------------------------------------------------------------ #
     # Write                                                                 #
@@ -194,7 +214,6 @@ class DecisionStore:
     def remember(self, fact: str, tags: Optional[list[str]] = None) -> str:
         """Add a fact to scratchpad. Returns the new memory id."""
         import uuid
-        from datetime import datetime, timezone
         mem_id = uuid.uuid4().hex[:12]
         now = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(self._db) as con:
@@ -203,6 +222,12 @@ class DecisionStore:
                 "VALUES (?, ?, ?, ?, ?)",
                 (mem_id, fact, json.dumps(tags or []), now, now),
             )
+        # Also embed into ChromaDB for semantic search
+        self._scratch_col.upsert(
+            ids=[mem_id],
+            documents=[fact],
+            metadatas=[{"tags": json.dumps(tags or [])}],
+        )
         return mem_id
 
     def list_facts(self, limit: int = 50) -> list[dict]:
@@ -234,7 +259,13 @@ class DecisionStore:
     def forget_fact(self, mem_id: str) -> bool:
         with sqlite3.connect(self._db) as con:
             cur = con.execute("DELETE FROM scratchpad WHERE id = ?", (mem_id,))
-            return cur.rowcount > 0
+            deleted = cur.rowcount > 0
+        if deleted:
+            try:
+                self._scratch_col.delete(ids=[mem_id])
+            except Exception:
+                pass  # ChromaDB may not have it yet (pre-migration facts)
+        return deleted
 
     def touch_facts(self, mem_ids: list[str]) -> None:
         """Mark facts as used — updates scratchpad stats AND logs to retrieval_log.
@@ -293,21 +324,62 @@ class DecisionStore:
 
         return math.log(total) if total > 0 else 0.0
 
-    def search_facts_ranked(self, query: str, limit: int = 10) -> list[dict]:
-        """Substring search over scratchpad facts, re-ranked by ACT-R activation.
+    def search_facts_semantic(self, query: str, limit: int = 10) -> list[dict]:
+        """Semantic (embedding-based) search over scratchpad facts.
 
-        Falls back to last_used_at order when activation is zero (unaccessed facts).
+        Slower than substring search but finds conceptually related facts even
+        when exact keywords don't match. Requires ChromaDB scratchpad collection.
+        Falls back to substring search if the collection is empty.
         """
-        raw = self.search_facts(query, limit=limit * 2)  # over-fetch, then re-rank
-        if not raw:
+        total = self.fact_count()
+        if total == 0:
+            return []
+        try:
+            results = self._scratch_col.query(
+                query_texts=[query],
+                n_results=min(limit, total),
+            )
+        except Exception:
+            return self.search_facts(query, limit=limit)
+
+        ids = results["ids"][0] if results["ids"] else []
+        if not ids:
             return []
 
-        scored = []
-        for f in raw:
-            score = self.activation_score(f["id"])
-            scored.append((score, f))
+        placeholders = ",".join("?" * len(ids))
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                f"SELECT id, fact, tags FROM scratchpad WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+        id_to_fact = {
+            r[0]: {"id": r[0], "fact": r[1], "tags": json.loads(r[2])}
+            for r in rows
+        }
+        return [id_to_fact[i] for i in ids if i in id_to_fact]
 
-        # Sort: higher activation first; break ties by last_used_at (already in raw)
+    def search_facts_ranked(self, query: str, limit: int = 10) -> list[dict]:
+        """Hybrid search over scratchpad facts, re-ranked by ACT-R activation.
+
+        Merges substring results + semantic results, deduplicates, then re-ranks
+        by ACT-R activation score (recency × frequency). Falls back to
+        last_used_at order when activation is zero (unaccessed facts).
+        """
+        # Merge substring + semantic candidates (over-fetch both, deduplicate)
+        substring_hits = self.search_facts(query, limit=limit * 2)
+        semantic_hits = self.search_facts_semantic(query, limit=limit * 2)
+
+        seen: set[str] = set()
+        merged: list[dict] = []
+        for f in substring_hits + semantic_hits:
+            if f["id"] not in seen:
+                seen.add(f["id"])
+                merged.append(f)
+
+        if not merged:
+            return []
+
+        scored = [(self.activation_score(f["id"]), f) for f in merged]
         scored.sort(key=lambda x: x[0], reverse=True)
         return [f for _, f in scored[:limit]]
 
@@ -355,8 +427,70 @@ class DecisionStore:
             return cur.rowcount
 
     # ------------------------------------------------------------------ #
+    # Incremental indexing helpers                                          #
+    # ------------------------------------------------------------------ #
+
+    def is_commit_indexed(self, repo_path: str, commit_hash: str) -> bool:
+        """Return True if this commit has already been processed."""
+        with sqlite3.connect(self._db) as con:
+            row = con.execute(
+                "SELECT 1 FROM indexed_commits WHERE repo_path=? AND commit_hash=?",
+                (repo_path, commit_hash),
+            ).fetchone()
+        return row is not None
+
+    def mark_commit_indexed(self, repo_path: str, commit_hash: str) -> None:
+        """Record that this commit has been processed (idempotent)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                "INSERT OR IGNORE INTO indexed_commits "
+                "(repo_path, commit_hash, indexed_at) VALUES (?, ?, ?)",
+                (repo_path, commit_hash, now),
+            )
+
+    def indexed_commit_count(self, repo_path: str) -> int:
+        """How many commits have been indexed for this repo."""
+        with sqlite3.connect(self._db) as con:
+            return con.execute(
+                "SELECT COUNT(*) FROM indexed_commits WHERE repo_path=?",
+                (repo_path,),
+            ).fetchone()[0]
+
+    # ------------------------------------------------------------------ #
     # Internal                                                              #
     # ------------------------------------------------------------------ #
+
+    def _migrate_scratchpad_to_chroma(self) -> None:
+        """One-time migration: embed existing SQLite facts into ChromaDB scratchpad.
+
+        Called on every startup but is a no-op when the ChromaDB collection is
+        already in sync. This ensures users who had facts before the Phase 3
+        upgrade still get semantic search on their existing data.
+        """
+        chroma_count = self._scratch_col.count()
+        sqlite_count = self.fact_count()
+        if chroma_count >= sqlite_count or sqlite_count == 0:
+            return  # already in sync
+
+        # Fetch all facts not yet embedded
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute("SELECT id, fact, tags FROM scratchpad").fetchall()
+
+        try:
+            existing_ids = set(self._scratch_col.get(include=[])["ids"])
+        except Exception:
+            existing_ids = set()
+
+        to_embed = [(r[0], r[1], r[2]) for r in rows if r[0] not in existing_ids]
+        if not to_embed:
+            return
+
+        self._scratch_col.upsert(
+            ids=[r[0] for r in to_embed],
+            documents=[r[1] for r in to_embed],
+            metadatas=[{"tags": r[2]} for r in to_embed],
+        )
 
     def _init_db(self) -> None:
         with sqlite3.connect(self._db) as con:

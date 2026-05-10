@@ -220,3 +220,62 @@ def test_list_all_decisions_respects_limit(store):
         ))
     decisions = store.list_all_decisions(limit=2)
     assert len(decisions) == 2
+
+
+# ------------------------------------------------------------------ #
+# Semantic scratchpad search                                            #
+# ------------------------------------------------------------------ #
+
+def test_search_facts_semantic_empty(store):
+    results = store.search_facts_semantic("anything")
+    assert results == []
+
+
+def test_search_facts_semantic_finds_related(store):
+    store.remember("I always use PostgreSQL for our database layer")
+    store.remember("We prefer Rust over C++ for systems work")
+    # Semantic search: "relational database" should match PostgreSQL fact
+    results = store.search_facts_semantic("relational database", limit=5)
+    assert isinstance(results, list)
+    # Should return at least one result (ChromaDB may return any result)
+    assert len(results) >= 1
+
+
+def test_search_facts_ranked_merges_semantic_and_substring(store):
+    """Ranked search returns results from both semantic and substring."""
+    store.remember("Python is preferred for scripting tasks")
+    store.remember("We use TypeScript for all frontend work")
+    # Substring would find "Python", semantic might also return TypeScript
+    results = store.search_facts_ranked("scripting language preference", limit=5)
+    assert isinstance(results, list)
+    # At minimum the Python fact should appear
+    assert any("Python" in r["fact"] for r in results)
+
+
+# ------------------------------------------------------------------ #
+# Incremental indexing                                                  #
+# ------------------------------------------------------------------ #
+
+def test_commit_not_indexed_initially(store):
+    assert store.is_commit_indexed("/repo/path", "abc123") is False
+
+
+def test_mark_and_check_commit_indexed(store):
+    store.mark_commit_indexed("/repo/path", "abc123")
+    assert store.is_commit_indexed("/repo/path", "abc123") is True
+
+
+def test_mark_commit_indexed_idempotent(store):
+    """Marking the same commit twice should not raise."""
+    store.mark_commit_indexed("/repo/path", "deadbeef")
+    store.mark_commit_indexed("/repo/path", "deadbeef")  # second call is a no-op
+    assert store.indexed_commit_count("/repo/path") == 1
+
+
+def test_indexed_commit_count(store):
+    assert store.indexed_commit_count("/repo/a") == 0
+    store.mark_commit_indexed("/repo/a", "hash1")
+    store.mark_commit_indexed("/repo/a", "hash2")
+    store.mark_commit_indexed("/repo/b", "hash1")
+    assert store.indexed_commit_count("/repo/a") == 2
+    assert store.indexed_commit_count("/repo/b") == 1

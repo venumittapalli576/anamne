@@ -79,7 +79,7 @@ The wizard detects your API keys and picks a model. You can also set one manuall
 | Gemini 2.5 Flash Lite | `GEMINI_API_KEY=...` in `.env` | Free tier | Good |
 | Claude Sonnet 4.6 | `ANTHROPIC_API_KEY=...` in `.env` | ~$0.003/commit | Best |
 
-Data is stored in `~/.ANAMNE/` — SQLite + ChromaDB. Nothing leaves your machine.
+Data is stored in `~/.anamne/` — SQLite + ChromaDB. Nothing leaves your machine.
 
 ---
 
@@ -111,7 +111,11 @@ anamne import-chat session.txt --source text --dry-run  # preview first
 # Recall anything — searches all three layers, cited answer
 anamne recall "why did we switch from MySQL?"
 
-# Search raw facts in scratchpad (fast, no LLM call)
+# Direct scratchpad search — fast, ACT-R ranked, no API key needed
+anamne search postgres
+anamne search "python preference" --limit 5
+
+# List all scratchpad facts
 anamne facts
 
 # Show active working memory
@@ -136,8 +140,30 @@ anamne consolidate             # apply
 anamne index ./my-project
 anamne index ./my-project --adr-dir ./docs/adr
 
+# Incremental re-index — only new commits since last run
+anamne sync ./my-project
+
+# Export all memories to JSON or Markdown (for backup / migration)
+anamne export --output backup.json
+anamne export --format markdown --output memories.md
+
+# Save clipboard text directly to scratchpad
+anamne capture-clipboard
+anamne capture-clipboard --distill   # LLM extracts multiple facts
+
 # Show memory stats
 anamne status
+```
+
+### Auto-maintenance
+
+```bash
+# Incremental re-index — only processes new commits since last run (saves API calls)
+anamne sync ./my-project
+
+# Background consolidation daemon — periodically merges redundant facts
+anamne watch                       # runs every hour
+anamne watch --interval 1800       # every 30 minutes
 ```
 
 ### MCP server
@@ -222,7 +248,8 @@ This is not a from-scratch design. ANAMNE implements ideas from:
 - **LIGHT** ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246)) — three-layer memory framework:
   episodic + scratchpad + working, with layer-priority conflict resolution
 - **Agent Cognitive Compressor** — bounded compressed state: top-K verbatim, tail compressed
-- **ACT-R Memory Architecture** — activation tracking (last_used, use_count) for relevance ranking
+- **ACT-R Memory Architecture** — real decay formula `A_i = ln(Σ t_j^-d)`: every retrieval is
+  timestamped in `retrieval_log`; activation combines recency and frequency for relevance ranking
 - **Hippocampal indexing theory** — long-term store as compressed patterns, short-term as binding
 - **Lore protocol** ([arXiv 2603.15566](https://arxiv.org/abs/2603.15566)) — git as knowledge graph
 
