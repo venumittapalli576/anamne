@@ -1,7 +1,9 @@
 """Unified LLM client.
 
-Wraps Claude (Anthropic) and Gemini (Google) behind one interface so the
-agents don't have to know which provider they're talking to.
+Wraps Claude (Anthropic), Gemini (Google), and Ollama (local) behind one
+interface so the agents don't have to know which provider they're talking to.
+
+Priority: ANTHROPIC_API_KEY > GEMINI_API_KEY > MODEL=ollama/...
 
 Why a thin wrapper instead of LiteLLM: less surface area, no extra
 dependency, easier to read, and we only need text-in / text-out for now.
@@ -28,12 +30,15 @@ _GEMINI_FALLBACKS = [
     "gemini-2.5-flash",
 ]
 
+# Default Ollama base URL (the OpenAI-compatible endpoint)
+_OLLAMA_BASE = "http://localhost:11434/v1"
+
 
 class LLMClient:
-    """Picks Claude or Gemini based on which key is set in config.
+    """Picks Claude, Gemini, or Ollama based on config.
 
-    Priority: ANTHROPIC_API_KEY > GEMINI_API_KEY.
-    Raises a clear error if neither is set.
+    Priority: ANTHROPIC_API_KEY > GEMINI_API_KEY > MODEL=ollama/...
+    Raises a clear error if no provider is configured.
     """
 
     def __init__(self, cfg: Settings | None = None):
@@ -47,16 +52,25 @@ class LLMClient:
             self._provider = "anthropic"
             self._model = self._cfg.model or "claude-sonnet-4-6"
             self._client = anthropic.Anthropic(api_key=self._cfg.anthropic_api_key)
+
         elif self._cfg.gemini_api_key:
             from google import genai
             self._provider = "gemini"
-            # Default to the lite variant — less crowded on the free tier
             self._model = self._cfg.model or "gemini-2.5-flash-lite"
             self._client = genai.Client(api_key=self._cfg.gemini_api_key)
+
+        elif self._cfg.model and self._cfg.model.startswith("ollama/"):
+            self._provider = "ollama"
+            # Strip the "ollama/" prefix to get the raw model name
+            self._model = self._cfg.model.split("/", 1)[1]
+
         else:
             raise RuntimeError(
-                "No LLM API key configured. Set ANTHROPIC_API_KEY or GEMINI_API_KEY. "
-                "Run `provenance init` for an interactive setup."
+                "No LLM provider configured.\n"
+                "  Option 1 (free):    set GEMINI_API_KEY in .env\n"
+                "  Option 2 (quality): set ANTHROPIC_API_KEY in .env\n"
+                "  Option 3 (offline): set MODEL=ollama/llama3.2 and run Ollama\n"
+                "Run `provenance init` for an interactive setup wizard."
             )
 
     @property
@@ -85,8 +99,17 @@ class LLMClient:
             text = msg.content[0].text if msg.content else ""
             return LLMResponse(text=text, model=self._model)
 
-        # gemini — retry on 503 with backoff, fall back to other models if needed
-        return self._gemini_complete(prompt, max_tokens, temperature)
+        if self._provider == "gemini":
+            return self._gemini_complete(prompt, max_tokens, temperature)
+
+        if self._provider == "ollama":
+            return self._ollama_complete(prompt, max_tokens, temperature)
+
+        raise RuntimeError(f"Unknown provider: {self._provider}")
+
+    # ------------------------------------------------------------------ #
+    # Provider-specific helpers                                             #
+    # ------------------------------------------------------------------ #
 
     def _gemini_complete(self, prompt: str, max_tokens: int, temperature: float) -> LLMResponse:
         from google.genai import types
@@ -113,10 +136,47 @@ class LLMClient:
                     last_err = e
                     if attempt < 2:
                         time.sleep(1.5 ** attempt + 0.5)
-                except genai_errors.ClientError as e:
+                except genai_errors.ClientError:
                     # 4xx — request issue, no point retrying or falling back
                     raise
             # All attempts on this model failed → try next model in fallback list
 
-        # Every model exhausted
         raise last_err or RuntimeError("All Gemini models unavailable")
+
+    def _ollama_complete(self, prompt: str, max_tokens: int, temperature: float) -> LLMResponse:
+        """Call the Ollama OpenAI-compatible REST endpoint.
+
+        Ollama exposes POST /v1/chat/completions (same shape as OpenAI).
+        We use httpx (already a project dependency) so we need zero new deps.
+        """
+        import httpx
+
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+
+        try:
+            resp = httpx.post(
+                f"{_OLLAMA_BASE}/chat/completions",
+                json=payload,
+                timeout=120.0,  # local models can be slow
+            )
+        except httpx.ConnectError:
+            raise RuntimeError(
+                f"Cannot connect to Ollama at {_OLLAMA_BASE}.\n"
+                "Make sure Ollama is running: `ollama serve`\n"
+                f"And the model is pulled: `ollama pull {self._model}`"
+            )
+
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Ollama returned HTTP {resp.status_code}: {resp.text[:400]}"
+            )
+
+        data = resp.json()
+        text = data["choices"][0]["message"]["content"]
+        return LLMResponse(text=text, model=self._model)

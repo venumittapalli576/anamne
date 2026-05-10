@@ -32,7 +32,7 @@ console = Console()
 
 _BANNER = """[bold green]
 ╔═══════════════════════════════════════╗
-║   P R O V E N A N C E   v0.1.0       ║
+║   P R O V E N A N C E   v0.2.0       ║
 ║   The living memory of why your       ║
 ║   code exists.                        ║
 ╚═══════════════════════════════════════╝[/bold green]"""
@@ -117,8 +117,9 @@ def init(
         else:
             existing += "\nMODEL=ollama/llama3.2\n"
             console.print(
-                "[yellow]Note:[/yellow] make sure Ollama is running and "
-                "[cyan]ollama pull llama3.2[/cyan] has completed."
+                "[green]Ollama configured.[/green] Before using PROVENANCE, ensure:\n"
+                "  1. Ollama is running: [cyan]ollama serve[/cyan]\n"
+                "  2. Model is downloaded: [cyan]ollama pull llama3.2[/cyan]"
             )
 
         env_file.write_text(existing.lstrip() + "\n", encoding="utf-8")
@@ -384,7 +385,7 @@ def consolidate(
         console.print(f"[cyan]Merge {i}:[/cyan]")
         for fact in m["replaced_facts"]:
             console.print(f"  [dim]- {fact}[/dim]")
-        console.print(f"  [green]→ {m['merged']}[/green]\n")
+        console.print(f"  [green]-> {m['merged']}[/green]\n")
 
     if dry_run:
         console.print(
@@ -412,6 +413,198 @@ def facts(
     for f in rows:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
         console.print(f"[cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+
+
+@app.command()
+def journal(
+    entry: str = typer.Argument(..., help="What you want to record"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Extra tags (repeatable)"),
+) -> None:
+    """Log a timestamped journal entry to scratchpad memory.
+
+    Quick capture for things you want to remember: what you worked on today,
+    a decision you made, something you learned. Stored in scratchpad with a
+    'journal' tag and today's date prepended automatically.
+
+    Examples:
+      provenance journal "Chose Postgres over SQLite because we need concurrent writes"
+      provenance journal "Finally fixed the Stripe webhook double-fire — idempotency key was wrong"
+    """
+    from datetime import date
+    from provenance.store.graph import DecisionStore
+
+    store = DecisionStore()
+    today = date.today().isoformat()
+    full_text = f"[{today}] {entry}"
+    tags = list({"journal"} | set(tag))
+    mem_id = store.remember(full_text, tags=tags)
+    console.print(f"[green]Journaled[/green] [dim]({mem_id})[/dim]: {full_text}")
+
+
+@app.command(name="import-chat")
+def import_chat(
+    file: Path = typer.Argument(..., help="Exported conversation file (JSON or plain text)"),
+    source: str = typer.Option(
+        "auto", "--source", "-s",
+        help="Source format: auto | claude | chatgpt | text"
+    ),
+    limit: int = typer.Option(
+        30, "--limit", "-n", help="Max facts to extract"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show extracted facts without storing"
+    ),
+) -> None:
+    """Extract and store memorable facts from an exported AI conversation.
+
+    Point at an exported JSON or text file from Claude, ChatGPT, or any AI
+    tool. The LLM scans the conversation and extracts durable facts worth
+    keeping: preferences, decisions, technical context.
+
+    To export:
+      Claude.ai  -> Settings > Export Data (conversations.json)
+      ChatGPT    -> Settings > Export Data (conversations.json)
+      Cursor     -> Export conversation from chat panel
+      Plain text -> Paste any conversation text into a .txt file
+
+    Examples:
+      provenance import-chat ~/Downloads/conversations.json
+      provenance import-chat session.txt --source text --dry-run
+    """
+    _require_api_key()
+
+    file_path = file.resolve()
+    if not file_path.exists():
+        console.print(f"[red]File not found:[/red] {file_path}")
+        raise typer.Exit(1)
+
+    # Load and normalise the conversation text
+    raw = file_path.read_text(encoding="utf-8", errors="ignore")
+
+    if source == "text" or file_path.suffix == ".txt":
+        conversation_text = raw[:12000]
+    else:
+        conversation_text = _parse_chat_json(raw, source=source)
+
+    if not conversation_text.strip():
+        console.print("[yellow]Could not extract any conversation text.[/yellow]")
+        raise typer.Exit(1)
+
+    console.print(
+        f"\n[bold]Scanning[/bold] [cyan]{file_path.name}[/cyan] "
+        f"[dim]({len(conversation_text)} chars)[/dim]...\n"
+    )
+
+    from provenance.llm import LLMClient
+    llm = LLMClient()
+
+    import json as _json
+    extract_prompt = (
+        "You are reading an AI conversation transcript. Extract durable facts "
+        "that are worth keeping long-term — things that will still be useful "
+        "weeks from now.\n\n"
+        "Keep:\n"
+        "- Personal preferences and constraints the user expressed\n"
+        "- Technical decisions made during the conversation\n"
+        "- Project context (what they're building, tech stack, goals)\n"
+        "- Recurring problems or patterns\n"
+        "- Things the user said they want to remember\n\n"
+        "Skip:\n"
+        "- Specific code snippets (unless they encode a lasting decision)\n"
+        "- Debugging steps that are now resolved\n"
+        "- Questions that were answered and fully resolved\n"
+        "- AI assistant responses (only what the USER said/decided)\n\n"
+        f"Conversation (truncated):\n{conversation_text[:10000]}\n\n"
+        f"Return ONLY a JSON array of up to {limit} strings. "
+        "Example: [\"I prefer TypeScript over JavaScript\", \"This project uses Postgres\"]\n"
+        "JSON array:"
+    )
+
+    try:
+        raw_response = llm.complete(extract_prompt, max_tokens=1024).text.strip()
+        # Strip code fence if present
+        if raw_response.startswith("```"):
+            raw_response = raw_response.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            if raw_response.startswith("json"):
+                raw_response = raw_response[4:].strip()
+        extracted: list[str] = _json.loads(raw_response)
+        if not isinstance(extracted, list):
+            raise ValueError("Expected JSON array")
+    except Exception as e:
+        console.print(f"[red]Extraction failed ({e}).[/red] Try --source text.")
+        raise typer.Exit(1)
+
+    if not extracted:
+        console.print("[yellow]No durable facts found in this conversation.[/yellow]")
+        return
+
+    console.print(f"[bold]Found {len(extracted)} fact(s):[/bold]\n")
+    for i, fact in enumerate(extracted, 1):
+        console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
+
+    if dry_run:
+        console.print(f"\n[yellow]Dry run — nothing stored.[/yellow] Remove --dry-run to save.")
+        return
+
+    from provenance.store.graph import DecisionStore
+    store = DecisionStore()
+    source_tag = f"imported-{source}" if source != "auto" else "imported"
+    for fact in extracted:
+        store.remember(fact.strip(), tags=[source_tag, "chat-import"])
+
+    console.print(
+        f"\n[green]Stored {len(extracted)} fact(s)[/green] "
+        f"[dim](tagged: {source_tag}, chat-import)[/dim]"
+    )
+
+
+def _parse_chat_json(raw: str, source: str) -> str:
+    """Try to extract human-readable conversation text from a JSON export."""
+    import json as _json
+
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError:
+        # Not valid JSON — treat as text
+        return raw[:12000]
+
+    lines: list[str] = []
+
+    # ChatGPT export: list of conversations, each with 'mapping' dict
+    if isinstance(data, list) and data and "mapping" in data[0]:
+        for conv in data[:5]:  # first 5 conversations
+            mapping = conv.get("mapping", {})
+            for node in mapping.values():
+                msg = node.get("message") or {}
+                role = (msg.get("author") or {}).get("role", "")
+                parts = (msg.get("content") or {}).get("parts", [])
+                if role == "user" and parts:
+                    text = " ".join(str(p) for p in parts if isinstance(p, str))
+                    if text.strip():
+                        lines.append(f"User: {text.strip()}")
+
+    # Claude export: list of conversations with 'chat_messages'
+    elif isinstance(data, list) and data and "chat_messages" in data[0]:
+        for conv in data[:5]:
+            for msg in conv.get("chat_messages", []):
+                if msg.get("sender") == "human":
+                    text = msg.get("text", "")
+                    if text.strip():
+                        lines.append(f"User: {text.strip()[:500]}")
+
+    # Generic: look for 'messages' array (OpenAI-ish format)
+    elif isinstance(data, dict) and "messages" in data:
+        for msg in data["messages"]:
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    lines.append(f"User: {content.strip()[:500]}")
+
+    # Unknown structure — just dump readable content
+    else:
+        return _json.dumps(data, indent=2)[:12000]
+
+    return "\n".join(lines)[:12000]
 
 
 @app.command()
@@ -464,22 +657,27 @@ def status() -> None:
     table.add_column("Key", style="cyan", no_wrap=True)
     table.add_column("Value")
 
-    table.add_row("Decisions indexed", f"[bold]{count}[/bold]")
+    fact_count = store.fact_count()
+    work_count = len(store.working_active())
+
+    table.add_row("Episodic memory", f"[bold]{count}[/bold] decisions")
+    table.add_row("Scratchpad facts", f"[bold]{fact_count}[/bold] facts")
+    table.add_row("Working memory", f"[bold]{work_count}[/bold] active notes")
     table.add_row(
         "Status",
-        "[green]ready[/green]" if count > 0 else "[yellow]empty - run: provenance index .[/yellow]",
+        "[green]ready[/green]" if (count + fact_count) > 0
+        else "[yellow]empty — run: provenance index . or provenance remember ...[/yellow]",
     )
     table.add_row("Indexed repos", str(len(repos)) if repos else "none")
     table.add_row("Data dir", str(cfg.data_dir))
     table.add_row("Model", cfg.resolved_model() or "[dim](not set)[/dim]")
-    table.add_row(
-        "Tier",
-        cfg.model_tier(),
-    )
+    table.add_row("Provider", cfg.model_tier())
     table.add_row(
         "API key",
         "[green]set[/green]"
-        if cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here"
+        if (cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here")
+           or cfg.gemini_api_key
+           or cfg.model_tier() == "ollama"
         else "[red]missing[/red]",
     )
 
@@ -503,10 +701,15 @@ def mcp_server() -> None:
     from provenance.config import get_settings
 
     cfg = get_settings()
-    if not (cfg.anthropic_api_key or cfg.gemini_api_key):
+    has_provider = (
+        cfg.anthropic_api_key
+        or cfg.gemini_api_key
+        or (cfg.model and cfg.model.startswith("ollama/"))
+    )
+    if not has_provider:
         # Stderr-only — must not pollute stdout
         sys.stderr.write(
-            "PROVENANCE MCP: no LLM API key configured.\n"
+            "PROVENANCE MCP: no LLM provider configured.\n"
             "Run `provenance init` first, then restart your MCP host.\n"
         )
         raise typer.Exit(1)

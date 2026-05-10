@@ -1,6 +1,6 @@
 # PROVENANCE
 
-> A local-first, brain-inspired memory layer for everyone who uses Claude, Cursor, ChatGPT, or any MCP-compatible AI tool.
+> A local-first, brain-inspired memory layer for Claude, Cursor, ChatGPT, and any MCP-compatible AI tool.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
@@ -8,42 +8,60 @@
 
 ---
 
-## What It Does
+## The Problem
 
-AI tools forget you between sessions. Every time you open a new chat with Claude or Cursor, you re-explain who you are, what you're working on, what you've already decided.
+AI tools forget you between sessions. Every time you open a new chat, you re-explain:
+- What you're building and why
+- What decisions you've already made
+- Your preferences and constraints
+- What went wrong last week
 
-PROVENANCE is a memory layer that sits on **your** machine, captures the things worth remembering across all your AI conversations and your code history, and feeds them back into any AI tool through MCP.
+The context window is not the answer. Even million-token windows lose track of what mattered three sessions ago.
 
-```bash
-# Capture a fact
-provenance remember "I'm a vegetarian who's allergic to peanuts"
-
-# Recall context for any topic
-provenance recall "what dietary restrictions do I have?"
-
-# Or let it index your git history automatically
-provenance index ./my-repo
-```
-
-When you next open Claude or Cursor, the AI already knows what matters — without you re-typing it.
+**Structured memory is the answer — the way human brains do it.**
 
 ---
 
-## Why This Exists
+## What PROVENANCE Does
 
-Recent benchmarks: top models drop accuracy from 99% to 30% as conversations grow long. Even 1M-token context windows lose track of what mattered three turns ago.
+PROVENANCE runs locally on your machine and gives every AI tool you use a shared memory layer.
 
-The fix isn't bigger context windows. It's **structured memory** — the way human brains do it.
+```bash
+# Remember something
+provenance remember "I always use Postgres, not SQLite, because we need concurrent writes"
+provenance journal "Finally fixed the Stripe webhook double-fire: the idempotency key was wrong"
 
-PROVENANCE implements a **brain-inspired three-layer memory architecture** drawn from 2026 research (LIGHT, ACT-R, ACC):
+# Import an entire Claude or ChatGPT conversation and extract the facts
+provenance import-chat ~/Downloads/conversations.json
 
-| Layer | Brain analog | What it stores |
-|---|---|---|
-| **Episodic** | Long-term hippocampal index | Full record of past conversations and code decisions |
-| **Working** | Prefrontal cortex | What you're focused on right this session |
-| **Scratchpad** | Semantic memory | Distilled facts ("I prefer Python", "we use Postgres") |
+# Index your git history — every architectural decision extracted automatically
+provenance index ./my-repo
 
-Each layer has its own retrieval policy and decay rules. Combined, they let any AI tool feel like it remembers you across sessions, devices, and even across different AI tools.
+# Ask anything — recall across all memory layers with citations
+provenance recall "what database decisions have we made?"
+```
+
+When you open Claude or Cursor, the AI already knows what matters — through the MCP server.
+
+---
+
+## Memory Architecture
+
+PROVENANCE implements a three-layer memory architecture based on two 2026 research papers
+(LIGHT, Agent Cognitive Compressor) and neuroscience (ACT-R, hippocampal indexing theory):
+
+| Layer | Brain analog | Stores | Decay |
+|---|---|---|---|
+| **Episodic** | Hippocampal long-term index | Git decisions, ADR files, full history | Bi-temporal (valid_until) |
+| **Scratchpad** | Semantic memory | Distilled facts, journal entries, imported chats | ACT-R activation (explicit forget) |
+| **Working** | Prefrontal cortex | Current session context, active tasks | TTL (auto-expires) |
+
+When you ask a question, all three layers are searched. The top results from each layer are
+combined, conflicts are surfaced, and every answer is cited back to its source.
+
+Additionally, when the episodic database grows large, lower-ranked results are **compressed**
+into a compact summary before being sent to the LLM — this is the ACC paper's core idea of
+*bounded compressed state*, preventing prompt bloat.
 
 ---
 
@@ -54,110 +72,185 @@ pip install provenance-ai
 provenance init
 ```
 
-`provenance init` walks you through everything. Picks a model based on what API keys you have, creates the local memory store, indexes your current repo if any.
+The wizard detects your API keys and picks a model. You can also set one manually:
 
-| Model | Cost | Quality | Setup |
+| Model | How | Cost | Quality |
 |---|---|---|---|
-| **Gemini 2.5 Flash Lite** (default) | Free tier | Good | Google login → free key |
-| Claude Sonnet 4.6 | ~$0.003/commit | Best | Anthropic API key |
-| Ollama | Free, offline | Roadmap | Not yet implemented |
+| Gemini 2.5 Flash Lite | `GEMINI_API_KEY=...` in `.env` | Free tier | Good |
+| Claude Sonnet 4.6 | `ANTHROPIC_API_KEY=...` in `.env` | ~$0.003/commit | Best |
+| Ollama (llama3.2) | `MODEL=ollama/llama3.2` + run `ollama serve` | Free, offline | Good |
+
+Data is stored in `~/.provenance/` — SQLite + ChromaDB. Nothing leaves your machine.
 
 ---
 
 ## Commands
 
+### Memory capture
+
 ```bash
-provenance init                       # interactive setup
-provenance remember "fact or note"    # add to scratchpad memory
-provenance recall "your question"     # cross-layer recall, cited
-provenance index <repo>               # bulk-import git history into episodic memory
-provenance status                     # show memory stats
-provenance mcp-server                 # run as MCP server for AI tools
+# Add a durable fact (short form — stored verbatim)
+provenance remember "we deploy on Fridays before 2pm only"
+
+# Add with tags
+provenance remember "prefer pytest over unittest" --tag python --tag testing
+
+# Extract multiple structured facts from a long blob of text (LLM-distilled)
+provenance remember "long paste of meeting notes..." --distill
+
+# Log a timestamped journal entry (auto-tagged 'journal')
+provenance journal "Switched payment processor because Stripe fees hit 3%"
+
+# Import facts from an exported Claude or ChatGPT conversation
+provenance import-chat ~/Downloads/conversations.json
+provenance import-chat session.txt --source text --dry-run  # preview first
+```
+
+### Memory recall
+
+```bash
+# Recall anything — searches all three layers, cited answer
+provenance recall "why did we switch from MySQL?"
+
+# Search raw facts in scratchpad (fast, no LLM call)
+provenance facts
+
+# Show active working memory
+provenance working
+
+# Add a session note to working memory (expires in 60 min by default)
+provenance working "currently debugging the auth middleware"
+provenance working "debugging login flow" --ttl 120  # 2 hours
+```
+
+### Memory maintenance
+
+```bash
+# Delete a specific fact by ID
+provenance forget <memory-id>
+
+# Merge redundant/duplicate facts using LLM (sleep-phase consolidation)
+provenance consolidate --dry-run   # preview first
+provenance consolidate             # apply
+
+# Bulk index a git repo — extracts architectural decisions from commit history
+provenance index ./my-project
+provenance index ./my-project --adr-dir ./docs/adr
+
+# Show memory stats
+provenance status
+```
+
+### MCP server
+
+```bash
+provenance mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 ```
 
 ---
 
-## MCP Integration — Memory Layer for Any AI Tool
+## MCP Integration
 
-PROVENANCE runs as an MCP server, exposing memory tools to Claude, Cursor, Cline, and any MCP-compatible AI:
+PROVENANCE exposes 11 tools through the MCP protocol, giving any compatible AI assistant
+direct access to your memory layers:
 
 | Tool | What it does |
 |---|---|
-| `recall(question)` | Cross-layer memory search with citations |
-| `remember(fact)` | Add a fact to scratchpad memory |
-| `working_context()` | What you've been working on this session |
-| `episodic_search(query)` | Long-term memory retrieval |
-| `forget(memory_id)` | Explicit deletion (matches brain decay) |
+| `ask_why` | Ask why a piece of code exists (Oracle, all layers, cited) |
+| `search_decisions` | Raw semantic search of episodic memory |
+| `get_file_context` | All decisions related to a specific file |
+| `get_stats` | Memory layer statistics |
+| `remember` | Add a fact to scratchpad |
+| `list_facts` | List scratchpad facts |
+| `forget_fact` | Delete a scratchpad fact |
+| `search_facts` | Substring search over scratchpad |
+| `consolidate_facts` | Merge redundant facts (ACC-style) |
+| `working_memory_add` | Add a session note |
+| `working_memory_active` | Get active session context |
 
-**Claude Code** (`~/.claude/claude_desktop_config.json` or `~/.claude.json`):
+### Claude Code
+
+Add to `~/.claude.json` (macOS/Linux) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
 ```json
 {
   "mcpServers": {
     "provenance": {
       "command": "provenance",
-      "args": ["mcp-server"],
-      "cwd": "/path/to/your/.provenance/data"
+      "args": ["mcp-server"]
     }
   }
 }
 ```
 
-**Cursor** (Settings > MCP):
+### Cursor
+
+Settings > MCP > Add server:
 ```json
 { "command": "provenance mcp-server" }
 ```
 
+Once connected, Claude/Cursor can call `ask_why`, `remember`, and the other tools directly —
+without you copying and pasting context into every new chat.
+
 ---
 
-## Why Local-First
+## Quick Demo
 
-- Your memory stays on your machine. Nothing goes to a vendor server.
-- Your API keys stay in your `.env`. No middleman billing.
-- Your data is portable — SQLite + a folder of files. Take it anywhere.
-- Open source under MIT. No vendor lock-in.
+```bash
+# Create a test repo with realistic history
+python scripts/create_test_repo.py
 
-This is the opposite of cloud memory products like Mem0 or Supermemory, which target app developers and require their backend. PROVENANCE is for individual humans using AI tools.
+# Index it
+provenance index ./test-repo
+
+# Ask questions
+provenance recall "why was Redis added?"
+provenance recall "what's the payment architecture?"
+
+# Add your own facts
+provenance remember "we always review security implications before shipping auth changes"
+provenance journal "Migrated from Heroku to Railway today — better pricing for our usage"
+provenance recall "what have we decided about deployment?"
+```
+
+---
+
+## Research Grounding
+
+This is not a from-scratch design. PROVENANCE implements ideas from:
+
+- **LIGHT** ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246)) — three-layer memory framework:
+  episodic + scratchpad + working, with layer-priority conflict resolution
+- **Agent Cognitive Compressor** — bounded compressed state: top-K verbatim, tail compressed
+- **ACT-R Memory Architecture** — activation tracking (last_used, use_count) for relevance ranking
+- **Hippocampal indexing theory** — long-term store as compressed patterns, short-term as binding
+- **Lore protocol** ([arXiv 2603.15566](https://arxiv.org/abs/2603.15566)) — git as knowledge graph
+
+The "brain-inspired" framing is a useful metaphor grounded in actual research — not a claim
+about neuroscience accuracy.
 
 ---
 
 ## Honest Limitations
 
-- Output quality depends on how clearly you capture memories. Garbage in, garbage out.
-- Indexing a large repo can be slow and cost a few dollars on paid LLM APIs (free on Gemini's tier within rate limits).
-- MCP integration only works in editors that support MCP (Cursor, Claude Code, Cline, a few others).
-- This is a personal project. Not production infrastructure.
-- Brain-inspired architecture is approximate — neuroscience is hard, this is a useful metaphor not a model of the actual brain.
+- Output quality depends on what you capture. Vague memories get vague answers.
+- Indexing a large repo can cost a few dollars on paid APIs (free on Gemini within rate limits).
+- MCP requires an editor that supports the protocol (Claude Code, Cursor, Cline, a few others).
+- This is a personal project. Bug reports may sit. Not production infrastructure.
+- The brain-inspired framing is a useful metaphor, not a neuroscience claim.
 
 ---
 
-## Inspired By Recent Research
+## Why Not Mem0 / Supermemory?
 
-This isn't a from-scratch design. PROVENANCE implements ideas from:
+Those tools are SDKs for app developers — they require their backend and target SaaS builders.
+PROVENANCE is for individual humans who use AI tools daily:
 
-- **LIGHT** — three-layer memory framework ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246))
-- **ACT-R-Inspired Memory** — temporal decay + activation
-- **Agent Cognitive Compressor** — bounded compressed cognitive state
-- **Hippocampal indexing theory** — episodic memory stores compressed neocortical patterns
-
----
-
-## Demo
-
-```bash
-python scripts/create_test_repo.py
-provenance index ./test-repo
-provenance recall "why was Redis added?"
-provenance remember "always use 2-space indentation in this project"
-provenance recall "what's our indentation style?"
-```
-
----
-
-## Status
-
-- v0.1.x — git-history capture and recall (works)
-- v0.2.x — explicit `remember` and `working_context` (in progress)
-- v0.3.x — multi-source capture (clipboard, browser, AI conversations)
+- **Local-first** — your data stays on your machine
+- **Zero dependencies on external backends** — SQLite + ChromaDB, runs anywhere
+- **Open source MIT** — fork it, change it, own it
+- **Works with any MCP-compatible tool** — not tied to one vendor
 
 ---
 
