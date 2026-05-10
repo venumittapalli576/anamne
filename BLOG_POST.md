@@ -1,4 +1,4 @@
-# I Built a Tool, Found a Competitor, Read Two Research Papers, and Pivoted in 48 Hours
+﻿# I Built a Tool, Found a Competitor, Read Two Research Papers, and Pivoted in 48 Hours
 
 *A software engineering war story about rapid iteration, research literacy, and the right time to stop.*
 
@@ -16,11 +16,11 @@ as the team grows or memory fades. I wanted to fix that.
 The idea: index git history with an LLM, extract "why" decisions from commit messages and ADRs,
 store them in a searchable graph, and surface them via an MCP server directly in your editor.
 
-I called it **PROVENANCE** and built it in a weekend.
+I called it **ANAMNE** and built it in a weekend.
 
 ```bash
-provenance index ./my-repo
-provenance ask "why was Redis added to this codebase?"
+anamne index ./my-repo
+anamne ask "why was Redis added to this codebase?"
 ```
 
 It worked. Claude answered with citations from actual commit messages. The demo was clean.
@@ -79,7 +79,7 @@ abstractions in the actual papers.
 
 ## What Changed
 
-Over two days I refactored PROVENANCE from "git WHY tool" to "personal memory layer":
+Over two days I refactored ANAMNE from "git WHY tool" to "personal memory layer":
 
 **Layer 1 — Episodic memory** (already existed, renamed/clarified):
 - ChromaDB semantic search over all past decisions
@@ -105,8 +105,8 @@ Over two days I refactored PROVENANCE from "git WHY tool" to "personal memory la
 - Layer conflict resolution (scratchpad beats working beats episodic)
 
 **New capture paths** (Phase 2):
-- `provenance journal` — timestamped entry, one command, no ceremony
-- `provenance import-chat` — point at an exported Claude/ChatGPT JSON, extract durable facts
+- `anamne journal` — timestamped entry, one command, no ceremony
+- `anamne import-chat` — point at an exported Claude/ChatGPT JSON, extract durable facts
 
 ---
 
@@ -117,7 +117,7 @@ The thing I realized while implementing this: **the problem I'm solving is diffe
 Repowise solves "why was this code written this way?" for teams. It's a knowledge management tool
 for codebases.
 
-PROVENANCE solves "what do I know about everything I've worked on?" for individuals. It's a
+ANAMNE solves "what do I know about everything I've worked on?" for individuals. It's a
 personal memory layer that works across all your AI tools, all your projects, your preferences,
 your constraints, your history.
 
@@ -148,7 +148,7 @@ def ask(self, question: str, ...) -> str:
     tail = episodic[3:]
     compressed = self._compress_tail(tail, question) if tail else None
 
-    # Format with provenance, send to LLM
+    # Format with provenance tags, send to LLM
     prompt = _ORACLE_PROMPT.format(
         working=self._format_working(working),
         facts=self._format_facts(facts),
@@ -166,7 +166,7 @@ The consolidation step — analogous to sleep-phase memory consolidation in neur
 scratchpad facts by keyword overlap and merges each cluster via LLM:
 
 ```bash
-$ provenance consolidate --dry-run
+$ anamne consolidate --dry-run
 
 Merge 1:
   - I prefer Python for backend services
@@ -201,7 +201,7 @@ theory — makes it defensible. When someone asks "why three layers?", I have a 
 
 ## The Honest Assessment
 
-PROVENANCE is a personal portfolio project. It won't replace Mem0. It won't scale to teams.
+ANAMNE is a personal portfolio project. It won't replace Mem0. It won't scale to teams.
 
 What it is:
 - A working CLI demo with cited recall across three memory layers
@@ -222,8 +222,8 @@ hiring manager than "I built X, here is the feature list."
 ## What's Next
 
 Phase 2 is already started:
-- `provenance import-chat` — import exported Claude/ChatGPT conversations, extract facts
-- `provenance journal` — one-command timestamped notes, no ceremony
+- `anamne import-chat` — import exported Claude/ChatGPT conversations, extract facts
+- `anamne journal` — one-command timestamped notes, no ceremony
 
 The interesting open question is Phase 3: **ACT-R decay**. Right now "activation" is tracked
 (last_used, use_count) but there's no actual decay formula. The real ACT-R formula is:
@@ -244,6 +244,6 @@ would make the "brain-inspired" claim genuinely precise rather than loosely meta
 MIT license. One-command install. Bring your own key. Zero telemetry.
 
 ```bash
-pip install provenance-ai
-provenance init
+pip install anamne
+anamne init
 ```

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Oracle Agent - cross-layer memory recall.
 
 Implements a hybrid of two 2026 frameworks:
@@ -22,10 +22,10 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from provenance.config import get_settings
-from provenance.llm import LLMClient
-from provenance.models import Decision
-from provenance.store.graph import DecisionStore
+from anamne.config import get_settings
+from anamne.llm import LLMClient
+from anamne.models import Decision
+from anamne.store.graph import DecisionStore
 
 console = Console()
 
@@ -34,7 +34,7 @@ _VERBATIM_K = 3
 _COMPRESS_AFTER = _VERBATIM_K  # anything beyond this is compressed
 
 _ORACLE_PROMPT = """\
-You are PROVENANCE Oracle - you answer questions using only the user's \
+You are ANAMNE Oracle - you answer questions using only the user's \
 personal memory layers below. You combine three brain-inspired memory types \
 following the LIGHT framework (arXiv 2510.27246):
 
@@ -58,8 +58,8 @@ Instructions:
 - If multiple layers contradict, prefer scratchpad > working > episodic and call out the conflict.
 - If a decision is marked POTENTIALLY STALE, surface that.
 - If the memory doesn't contain enough info, say so explicitly and suggest:
-    `provenance remember "..."`  to add a fact, or
-    `provenance index <repo>`    to capture more episodic memory.
+    `ANAMNE remember "..."`  to add a fact, or
+    `ANAMNE index <repo>`    to capture more episodic memory.
 - Be direct and specific. Skip filler.
 
 Structure your answer:
@@ -125,9 +125,9 @@ class OracleAgent:
             return (
                 "**No memory found.**\n\n"
                 "Try one of these to seed the knowledge base:\n"
-                '- `provenance remember "..."` to add a durable fact\n'
-                "- `provenance index <repo>` to capture git history\n"
-                '- `provenance working "..."` to note current session context'
+                '- `ANAMNE remember "..."` to add a durable fact\n'
+                "- `ANAMNE index <repo>` to capture git history\n"
+                '- `ANAMNE working "..."` to note current session context'
             )
 
         # 2. Update last_used timestamp on facts we're about to surface
@@ -147,7 +147,7 @@ class OracleAgent:
                 f"items — ACC-style bounded state):\n{summary}\n\n"
             )
 
-        # 4. Format each layer with explicit provenance
+        # 4. Format each layer with explicit ANAMNE
         prompt = _ORACLE_PROMPT.format(
             working=self._format_working(working),
             facts=self._format_facts(facts),
@@ -177,7 +177,7 @@ class OracleAgent:
         console.print(
             Panel(
                 Markdown(answer),
-                title="[bold green]PROVENANCE[/bold green]",
+                title="[bold green]ANAMNE[/bold green]",
                 border_style="green",
                 padding=(1, 2),
             )

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "provenance-ai"
+name = "anamne"
 version = "0.2.0"
 description = "Brain-inspired personal memory layer for AI tools"
 readme = "README.md"
@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-provenance = "provenance.cli.main:app"
+anamne = "anamne.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["provenance"]
+packages = ["anamne"]

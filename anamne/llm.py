@@ -1,4 +1,4 @@
-"""Unified LLM client.
+﻿"""Unified LLM client.
 
 Wraps Claude (Anthropic) and Gemini (Google) behind one interface so the
 agents don't have to know which provider they're talking to.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from provenance.config import Settings, get_settings
+from anamne.config import Settings, get_settings
 
 
 @dataclass
@@ -61,7 +61,7 @@ class LLMClient:
                 "No LLM API key configured.\n"
                 "  Option 1 (free):    set GEMINI_API_KEY in .env\n"
                 "  Option 2 (quality): set ANTHROPIC_API_KEY in .env\n"
-                "Run `provenance init` for an interactive setup wizard."
+                "Run `anamne init` for an interactive setup wizard."
             )
 
     @property

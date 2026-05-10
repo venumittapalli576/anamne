@@ -1,4 +1,4 @@
-"""
+﻿"""
 Historian Agent — reads git history and extracts architectural decisions.
 
 For each commit it asks Claude: "what decision was made here and WHY?"
@@ -17,10 +17,10 @@ import git
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from provenance.config import get_settings
-from provenance.llm import LLMClient
-from provenance.models import Decision
-from provenance.store.graph import DecisionStore
+from anamne.config import get_settings
+from anamne.llm import LLMClient
+from anamne.models import Decision
+from anamne.store.graph import DecisionStore
 
 console = Console()
 

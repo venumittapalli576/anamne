@@ -1,4 +1,4 @@
-"""
+﻿"""
 Decision store: SQLite (temporal/relational) + ChromaDB (semantic search).
 
 SQLite holds the full decision records with temporal metadata.
@@ -17,7 +17,7 @@ from typing import Optional
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-from provenance.models import Decision
+from anamne.models import Decision
 
 
 _SCHEMA = """
@@ -68,7 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_working_exp ON working_memory(expires_at);
 class DecisionStore:
     def __init__(self, data_dir: Optional[Path] = None):
         if data_dir is None:
-            from provenance.config import get_settings
+            from anamne.config import get_settings
             data_dir = get_settings().data_dir
 
         self.data_dir = Path(data_dir)

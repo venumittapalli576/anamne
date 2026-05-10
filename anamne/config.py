@@ -9,13 +9,13 @@ ModelTier = Literal["claude", "gemini", "none"]
 # Look in multiple places so the MCP server (launched from any directory)
 # still finds the user's keys. First non-empty match wins per pydantic-settings.
 _ENV_PATHS = (
-    Path.cwd() / ".env",                       # current working directory
-    Path.home() / ".provenance" / ".env",       # user's data dir
+    Path.cwd() / ".env",                   # current working directory
+    Path.home() / ".anamne" / ".env",      # user's data dir
 )
 
 
 class Settings(BaseSettings):
-    """Reads from .env file (cwd or ~/.provenance/.env).
+    """Reads from .env file (cwd or ~/.anamne/.env).
 
     Recognized env vars:
       ANTHROPIC_API_KEY  — Claude API key (best quality)
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     model: str = ""  # if blank, picked automatically based on available keys
-    data_dir: Path = Path.home() / ".provenance"
+    data_dir: Path = Path.home() / ".anamne"
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8765
 

@@ -1,5 +1,5 @@
-"""
-PROVENANCE MCP Server — plug into Cursor, Claude Code, or any MCP client.
+﻿"""
+ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
 
 Tools exposed:
   ask_why           — answer WHY questions about the codebase
@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
-from provenance.agents.oracle import OracleAgent
-from provenance.store.graph import DecisionStore
+from anamne.agents.oracle import OracleAgent
+from anamne.store.graph import DecisionStore
 
 mcp = FastMCP(
-    name="provenance",
+    name="ANAMNE",
     instructions=(
-        "PROVENANCE is the WHY layer of your codebase. "
+        "ANAMNE is the WHY layer of your codebase. "
         "Use ask_why to understand architectural decisions. "
         "Use search_decisions to find relevant past decisions. "
         "Use get_file_context before editing a file to understand its history."
@@ -85,7 +85,7 @@ def get_file_context(file_path: str) -> str:
 
 @mcp.tool()
 def get_stats() -> dict:
-    """Get statistics about the PROVENANCE knowledge base."""
+    """Get statistics about the ANAMNE knowledge base."""
     count = _store.count()
     repos = _store.all_repos()
     return {
@@ -94,7 +94,7 @@ def get_stats() -> dict:
         "facts_in_scratchpad": _store.fact_count(),
         "working_memory_items": len(_store.working_active()),
         "status": "ready" if count > 0 else "empty",
-        "hint": "Run: provenance index <repo-path>" if count == 0 else None,
+        "hint": "Run: ANAMNE index <repo-path>" if count == 0 else None,
     }
 
 
@@ -168,7 +168,7 @@ def consolidate_facts(
         dry_run: if True, returns the merge plan without writing anything.
         threshold: Jaccard similarity threshold for grouping (0.0–1.0).
     """
-    from provenance.agents.oracle import OracleAgent
+    from anamne.agents.oracle import OracleAgent
     agent = OracleAgent(store=_store)
     merges = agent.consolidate_facts(similarity_threshold=threshold, dry_run=dry_run)
     return {

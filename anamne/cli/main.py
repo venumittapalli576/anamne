@@ -1,8 +1,8 @@
-"""
-PROVENANCE CLI - The living memory of why your code exists.
+﻿"""
+anamne CLI - The living memory of why your code exists.
 
 Commands:
-  init    - set up PROVENANCE for a project
+  init    - set up anamne for a project
   index   - read git history and build the knowledge graph
   ask     - ask why something exists (the main demo)
   status  - show knowledge base stats
@@ -21,8 +21,8 @@ from rich.table import Table
 from rich.text import Text
 
 app = typer.Typer(
-    name="provenance",
-    help="[bold green]PROVENANCE[/bold green] - The living memory of [italic]why[/italic] your code exists.",
+    name="anamne",
+    help="[bold green]ANAMNE[/bold green] - The living memory of [italic]why[/italic] your code exists.",
     rich_markup_mode="rich",
     no_args_is_help=True,
     add_completion=False,
@@ -32,21 +32,21 @@ console = Console()
 
 _BANNER = """[bold green]
 ╔═══════════════════════════════════════╗
-║   P R O V E N A N C E   v0.2.0       ║
+║   A N A M N E   v0.2.0       ║
 ║   The living memory of why your       ║
 ║   code exists.                        ║
 ╚═══════════════════════════════════════╝[/bold green]"""
 
 
 def _require_api_key() -> None:
-    from provenance.config import get_settings
+    from anamne.config import get_settings
     cfg = get_settings()
     has_claude = bool(cfg.anthropic_api_key and cfg.anthropic_api_key != "your-key-here")
     has_gemini = bool(cfg.gemini_api_key)
     if not (has_claude or has_gemini):
         console.print(
             "\n[red bold]No LLM API key configured.[/red bold]\n"
-            "  Quickest fix: run [bold]provenance init[/bold]\n"
+            "  Quickest fix: run [bold]anamne init[/bold]\n"
             "  Or manually add one of these to a [bold].env[/bold] file:\n"
             "    [cyan]ANTHROPIC_API_KEY=sk-ant-...[/cyan]  (Claude, paid)\n"
             "    [cyan]GEMINI_API_KEY=...[/cyan]            (Gemini, free tier)\n"
@@ -70,7 +70,7 @@ def init(
     """Interactive setup wizard. Picks a model, writes .env, indexes the repo."""
     console.print(_BANNER)
 
-    from provenance.config import get_settings
+    from anamne.config import get_settings
     cfg = get_settings()
     repo_path = (repo or Path.cwd()).resolve()
 
@@ -126,18 +126,18 @@ def init(
     console.print("\n[bold]Step 3/3 - Indexing[/bold]")
     if skip_index:
         console.print("[yellow]Skipped (--skip-index).[/yellow]")
-        console.print(f"\nRun [bold]provenance index {repo_path}[/bold] when ready.")
+        console.print(f"\nRun [bold]anamne index {repo_path}[/bold] when ready.")
         return
 
     is_git_repo = (repo_path / ".git").exists()
     if not is_git_repo:
         console.print(f"[yellow]Note:[/yellow] [cyan]{repo_path}[/cyan] is not a git repo. Skipping auto-index.")
-        console.print("\nRun [bold]provenance index <path-to-repo>[/bold] later.")
+        console.print("\nRun [bold]anamne index <path-to-repo>[/bold] later.")
         return
 
     if typer.confirm(f"Index {repo_path} now?", default=True):
-        from provenance.agents.historian import HistorianAgent
-        from provenance.store.graph import DecisionStore
+        from anamne.agents.historian import HistorianAgent
+        from anamne.store.graph import DecisionStore
 
         store = DecisionStore()
         agent = HistorianAgent(store=store)
@@ -147,7 +147,7 @@ def init(
         if count > 0:
             console.print(
                 '\nTry it now:\n'
-                '  [bold]provenance ask "what was this project built for?"[/bold]'
+                '  [bold]anamne ask "what was this project built for?"[/bold]'
             )
         else:
             console.print(
@@ -155,7 +155,7 @@ def init(
                 "Likely the commit messages are too short or trivial."
             )
     else:
-        console.print(f"\nRun [bold]provenance index {repo_path}[/bold] when ready.")
+        console.print(f"\nRun [bold]anamne index {repo_path}[/bold] when ready.")
 
 
 @app.command()
@@ -171,8 +171,8 @@ def index(
     """Index a repository - read git history and build the WHY knowledge graph."""
     _require_api_key()
 
-    from provenance.agents.historian import HistorianAgent
-    from provenance.store.graph import DecisionStore
+    from anamne.agents.historian import HistorianAgent
+    from anamne.store.graph import DecisionStore
 
     repo_path = repo.resolve()
     console.print(
@@ -196,7 +196,7 @@ def index(
     )
 
     if count > 0:
-        console.print('Try: [bold]provenance ask "why does X exist?"[/bold]')
+        console.print('Try: [bold]anamne ask "why does X exist?"[/bold]')
     else:
         console.print(
             "[yellow]No decisions extracted.[/yellow] "
@@ -210,7 +210,7 @@ def ask(
 ) -> None:
     """Ask the Oracle why something was built a certain way."""
     _require_api_key()
-    from provenance.agents.oracle import OracleAgent
+    from anamne.agents.oracle import OracleAgent
 
     agent = OracleAgent()
     agent.ask_pretty(question)
@@ -235,12 +235,12 @@ def remember(
     Short text -> stored verbatim.
     Long text + --distill -> LLM extracts multiple structured facts.
     """
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     if distill:
         _require_api_key()
-        from provenance.llm import LLMClient
+        from anamne.llm import LLMClient
         llm = LLMClient()
         prompt = (
             "Extract durable, atomic facts from the text below. Each fact "
@@ -282,7 +282,7 @@ def recall(
     query: str = typer.Argument(..., help="What to recall from memory"),
 ) -> None:
     """Recall across episodic memory and scratchpad facts."""
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     # Scratchpad — direct, no LLM call needed
@@ -296,14 +296,14 @@ def recall(
     # Episodic memory — uses Oracle agent
     if store.count() > 0:
         _require_api_key()
-        from provenance.agents.oracle import OracleAgent
+        from anamne.agents.oracle import OracleAgent
         console.print("\n[bold cyan]From episodic memory:[/bold cyan]")
         agent = OracleAgent(store=store)
         agent.ask_pretty(query)
     elif not facts:
         console.print(
             "\n[yellow]Nothing found.[/yellow] "
-            "Try [bold]provenance remember[/bold] or [bold]provenance index[/bold] first."
+            "Try [bold]anamne remember[/bold] or [bold]anamne index[/bold] first."
         )
 
 
@@ -312,7 +312,7 @@ def forget(
     memory_id: str = typer.Argument(..., help="Scratchpad memory ID to delete"),
 ) -> None:
     """Forget a specific scratchpad fact."""
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
     if store.forget_fact(memory_id):
         console.print(f"[green]Forgot[/green] {memory_id}")
@@ -343,8 +343,8 @@ def consolidate(
     Use --dry-run to preview what would be merged before committing.
     """
     _require_api_key()
-    from provenance.agents.oracle import OracleAgent
-    from provenance.store.graph import DecisionStore
+    from anamne.agents.oracle import OracleAgent
+    from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
     fact_count = store.fact_count()
@@ -395,11 +395,11 @@ def facts(
     limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
 ) -> None:
     """List facts in scratchpad memory."""
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
     rows = store.list_facts(limit=limit)
     if not rows:
-        console.print("[dim]Scratchpad is empty. Try [bold]provenance remember \"...\"[/bold][/dim]")
+        console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
         return
     for f in rows:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
@@ -418,11 +418,11 @@ def journal(
     'journal' tag and today's date prepended automatically.
 
     Examples:
-      provenance journal "Chose Postgres over SQLite because we need concurrent writes"
-      provenance journal "Finally fixed the Stripe webhook double-fire — idempotency key was wrong"
+      anamne journal "Chose Postgres over SQLite because we need concurrent writes"
+      anamne journal "Finally fixed the Stripe webhook double-fire — idempotency key was wrong"
     """
     from datetime import date
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
     today = date.today().isoformat()
@@ -459,8 +459,8 @@ def import_chat(
       Plain text -> Paste any conversation text into a .txt file
 
     Examples:
-      provenance import-chat ~/Downloads/conversations.json
-      provenance import-chat session.txt --source text --dry-run
+      anamne import-chat ~/Downloads/conversations.json
+      anamne import-chat session.txt --source text --dry-run
     """
     _require_api_key()
 
@@ -486,7 +486,7 @@ def import_chat(
         f"[dim]({len(conversation_text)} chars)[/dim]...\n"
     )
 
-    from provenance.llm import LLMClient
+    from anamne.llm import LLMClient
     llm = LLMClient()
 
     import json as _json
@@ -537,7 +537,7 @@ def import_chat(
         console.print(f"\n[yellow]Dry run — nothing stored.[/yellow] Remove --dry-run to save.")
         return
 
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
     source_tag = f"imported-{source}" if source != "auto" else "imported"
     for fact in extracted:
@@ -605,7 +605,7 @@ def working(
     clear: bool = typer.Option(False, "--clear", help="Clear all working memory"),
 ) -> None:
     """Manage working memory (short-lived session context)."""
-    from provenance.store.graph import DecisionStore
+    from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     if clear:
@@ -631,8 +631,8 @@ def working(
 @app.command()
 def status() -> None:
     """Show knowledge base stats."""
-    from provenance.config import get_settings
-    from provenance.store.graph import DecisionStore
+    from anamne.config import get_settings
+    from anamne.store.graph import DecisionStore
 
     cfg = get_settings()
     store = DecisionStore()
@@ -640,7 +640,7 @@ def status() -> None:
     repos = store.all_repos()
 
     table = Table(
-        title="PROVENANCE Status",
+        title="anamne Status",
         border_style="green",
         show_header=False,
         padding=(0, 2),
@@ -657,7 +657,7 @@ def status() -> None:
     table.add_row(
         "Status",
         "[green]ready[/green]" if (count + fact_count) > 0
-        else "[yellow]empty — run: provenance index . or provenance remember ...[/yellow]",
+        else "[yellow]empty — run: anamne index . or anamne remember ...[/yellow]",
     )
     table.add_row("Indexed repos", str(len(repos)) if repos else "none")
     table.add_row("Data dir", str(cfg.data_dir))
@@ -682,30 +682,30 @@ def status() -> None:
 
 @app.command()
 def mcp_server() -> None:
-    """Start the MCP server - connects PROVENANCE to Cursor / Claude Code.
+    """Start the MCP server - connects anamne to Cursor / Claude Code.
 
     IMPORTANT: MCP uses stdio for JSON-RPC. We must NOT write anything to
     stdout other than the protocol itself, or the host (Claude Code, Cursor)
     will fail to parse the handshake. Status messages go to stderr.
     """
     import sys
-    from provenance.config import get_settings
+    from anamne.config import get_settings
 
     cfg = get_settings()
     if not (cfg.anthropic_api_key or cfg.gemini_api_key):
         # Stderr-only — must not pollute stdout
         sys.stderr.write(
-            "PROVENANCE MCP: no LLM API key configured.\n"
-            "Run `provenance init` first, then restart your MCP host.\n"
+            "anamne MCP: no LLM API key configured.\n"
+            "Run `anamne init` first, then restart your MCP host.\n"
         )
         raise typer.Exit(1)
 
     sys.stderr.write(
-        f"PROVENANCE MCP server starting (model: {cfg.resolved_model()})\n"
+        f"anamne MCP server starting (model: {cfg.resolved_model()})\n"
     )
     sys.stderr.flush()
 
-    from provenance.mcp.server import run
+    from anamne.mcp.server import run
     run()
 
 

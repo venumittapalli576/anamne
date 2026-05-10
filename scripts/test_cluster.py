@@ -1,5 +1,5 @@
-"""Quick smoke-test for the clustering helper."""
-from provenance.agents.oracle import _cluster_by_overlap
+﻿"""Quick smoke-test for the clustering helper."""
+from anamne.agents.oracle import _cluster_by_overlap
 
 sample = [
     {"id": "a1", "fact": "I prefer Python over Go for backend services", "tags": []},

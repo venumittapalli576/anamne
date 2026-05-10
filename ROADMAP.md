@@ -1,4 +1,4 @@
-# PROVENANCE — Roadmap
+﻿# ANAMNE — Roadmap
 
 A local-first, brain-inspired memory layer for AI users. Personal open-source project. MIT.
 
@@ -13,7 +13,7 @@ A local-first, brain-inspired memory layer for AI users. Personal open-source pr
 - FastMCP server with 4 tools (`ask_why`, `search_decisions`, `get_file_context`, `get_stats`)
 - CLI with `init`, `index`, `ask`, `status`, `mcp-server`
 - Working multi-model LLM client (Claude + Gemini)
-- One-command setup via `provenance init`
+- One-command setup via `anamne init`
 
 ---
 
@@ -30,14 +30,14 @@ A local-first, brain-inspired memory layer for AI users. Personal open-source pr
 | LLM-based fact distillation (`remember --distill`) | LIGHT key-value extraction | ✅ |
 | Working memory with TTL decay | Beyond LIGHT | ✅ |
 | Bounded context compression (top-K verbatim + tail summary) | Agent Cognitive Compressor | ✅ |
-| Scratchpad consolidation (`provenance consolidate`) | ACC + sleep-phase consolidation | ✅ |
+| Scratchpad consolidation (`anamne consolidate`) | ACC + sleep-phase consolidation | ✅ |
 | Full MCP tool surface (11 tools) | — | ✅ |
 
 ---
 
 ## Direction
 
-Originally PROVENANCE captured "WHY decisions were made" from git. Repowise (and others) already do
+Originally ANAMNE captured "WHY decisions were made" from git. Repowise (and others) already do
 this well. **v0.2 pivots to a brain-inspired personal memory layer for AI users.** The architecture
 maps directly onto the LIGHT memory framework and the ACC bounded-state design from 2026 research.
 
@@ -45,7 +45,7 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ## Phase 2 — Better Capture (next)
 
-- **Clipboard capture** — `provenance capture-clipboard` watches and offers to remember interesting things
+- **Clipboard capture** — `anamne capture-clipboard` watches and offers to remember interesting things
 - **AI conversation import** — point at exported Claude / ChatGPT / Cursor logs, extract memories
 - **Manual journal entry** — quick CLI to log a thought before it's lost
 
