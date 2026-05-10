@@ -230,31 +230,81 @@ class DecisionStore:
         )
         return mem_id
 
-    def list_facts(self, limit: int = 50) -> list[dict]:
+    def search_facts(
+        self,
+        query: str,
+        limit: int = 10,
+        tags: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """Substring search over facts, optionally filtered by tags."""
+        q = f"%{query.lower()}%"
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT id, fact, tags FROM scratchpad "
+                "WHERE LOWER(fact) LIKE ? ORDER BY last_used_at DESC LIMIT ?",
+                (q, limit * 3 if tags else limit),  # over-fetch when filtering
+            ).fetchall()
+        results = [{"id": r[0], "fact": r[1], "tags": json.loads(r[2])} for r in rows]
+        if tags:
+            tag_set = set(tags)
+            results = [f for f in results if tag_set.intersection(f["tags"])]
+        return results[:limit]
+
+    def list_facts(self, limit: int = 50, tags: Optional[list[str]] = None) -> list[dict]:
+        """List facts, optionally filtered by one or more tags."""
         with sqlite3.connect(self._db) as con:
             rows = con.execute(
                 "SELECT id, fact, tags, created_at, last_used_at, use_count "
                 "FROM scratchpad ORDER BY last_used_at DESC LIMIT ?",
-                (limit,),
+                (limit * 3 if tags else limit,),
             ).fetchall()
-        return [
+        results = [
             {
                 "id": r[0], "fact": r[1], "tags": json.loads(r[2]),
                 "created_at": r[3], "last_used_at": r[4], "use_count": r[5],
             }
             for r in rows
         ]
+        if tags:
+            tag_set = set(tags)
+            results = [f for f in results if tag_set.intersection(f["tags"])]
+        return results[:limit]
 
-    def search_facts(self, query: str, limit: int = 10) -> list[dict]:
-        """Naive substring search over facts. Cheap, no embeddings needed."""
-        q = f"%{query.lower()}%"
+    def clear_scratchpad(self) -> int:
+        """Delete all scratchpad facts. Returns count deleted."""
         with sqlite3.connect(self._db) as con:
-            rows = con.execute(
-                "SELECT id, fact, tags FROM scratchpad "
-                "WHERE LOWER(fact) LIKE ? ORDER BY last_used_at DESC LIMIT ?",
-                (q, limit),
-            ).fetchall()
-        return [{"id": r[0], "fact": r[1], "tags": json.loads(r[2])} for r in rows]
+            cur = con.execute("DELETE FROM scratchpad")
+            deleted = cur.rowcount
+            con.execute("DELETE FROM retrieval_log")
+        # Also clear ChromaDB scratchpad collection
+        try:
+            ids = self._scratch_col.get(include=[])["ids"]
+            if ids:
+                self._scratch_col.delete(ids=ids)
+        except Exception:
+            pass
+        return deleted
+
+    def clear_working(self) -> int:
+        """Delete all working memory notes. Returns count deleted."""
+        with sqlite3.connect(self._db) as con:
+            cur = con.execute("DELETE FROM working_memory")
+            return cur.rowcount
+
+    def clear_episodic(self) -> int:
+        """Delete all episodic decisions and their embeddings."""
+        with sqlite3.connect(self._db) as con:
+            cur = con.execute("DELETE FROM decisions")
+            deleted = cur.rowcount
+            con.execute("DELETE FROM indexed_commits")
+        # Also clear ChromaDB decisions collection
+        try:
+            ids = self._col.get(include=[])["ids"]
+            if ids:
+                self._col.delete(ids=ids)
+        except Exception:
+            pass
+        return deleted
 
     def forget_fact(self, mem_id: str) -> bool:
         with sqlite3.connect(self._db) as con:

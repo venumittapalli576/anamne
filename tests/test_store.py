@@ -279,3 +279,62 @@ def test_indexed_commit_count(store):
     store.mark_commit_indexed("/repo/b", "hash1")
     assert store.indexed_commit_count("/repo/a") == 2
     assert store.indexed_commit_count("/repo/b") == 1
+
+
+# ------------------------------------------------------------------ #
+# Tag filtering                                                         #
+# ------------------------------------------------------------------ #
+
+def test_list_facts_tag_filter(store):
+    store.remember("Python fact", tags=["python"])
+    store.remember("Postgres fact", tags=["database"])
+    store.remember("Tagged with both", tags=["python", "database"])
+
+    py_facts = store.list_facts(tags=["python"])
+    assert all("python" in f["tags"] for f in py_facts)
+    assert len(py_facts) == 2  # "Python fact" + "Tagged with both"
+
+
+def test_search_facts_tag_filter(store):
+    store.remember("Python is great for scripting", tags=["python"])
+    store.remember("Python runs on any OS", tags=["ops"])
+
+    results = store.search_facts("python", tags=["python"])
+    assert all("python" in f["tags"] for f in results)
+    assert len(results) == 1
+
+
+# ------------------------------------------------------------------ #
+# Clear layer methods                                                   #
+# ------------------------------------------------------------------ #
+
+def test_clear_scratchpad(store):
+    store.remember("fact one")
+    store.remember("fact two")
+    assert store.fact_count() == 2
+    n = store.clear_scratchpad()
+    assert n == 2
+    assert store.fact_count() == 0
+
+
+def test_clear_working(store):
+    store.working_add("note a")
+    store.working_add("note b")
+    n = store.clear_working()
+    assert n == 2
+    assert store.working_active() == []
+
+
+def test_clear_episodic(store):
+    from anamne.models import Decision
+    store.add(Decision(
+        content="A decision", why="reason",
+        source_type="commit", source_ref="abc",
+        source_author="alice",
+    ))
+    store.mark_commit_indexed("/repo", "abc")
+    assert store.count() == 1
+    n = store.clear_episodic()
+    assert n == 1
+    assert store.count() == 0
+    assert store.indexed_commit_count("/repo") == 0

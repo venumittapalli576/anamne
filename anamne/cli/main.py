@@ -531,13 +531,17 @@ def consolidate(
 @app.command()
 def facts(
     limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag (repeatable)"),
 ) -> None:
-    """List facts in scratchpad memory."""
+    """List facts in scratchpad memory, optionally filtered by tag."""
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
-    rows = store.list_facts(limit=limit)
+    rows = store.list_facts(limit=limit, tags=tag or None)
     if not rows:
-        console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
+        if tag:
+            console.print(f"[dim]No facts tagged: {', '.join(tag)}[/dim]")
+        else:
+            console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
         return
     for f in rows:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
@@ -740,6 +744,7 @@ def _parse_chat_json(raw: str, source: str) -> str:
 def search(
     query: str = typer.Argument(..., help="Search term"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag (repeatable)"),
     no_rank: bool = typer.Option(
         False, "--no-rank", help="Skip ACT-R ranking, use raw recency order"
     ),
@@ -747,19 +752,26 @@ def search(
     """Search scratchpad facts directly — no LLM, no API key required.
 
     Results are ranked by ACT-R activation (recency + frequency of use)
-    so the most relevant facts surface first. Use --no-rank for raw order.
+    so the most relevant facts surface first. Uses hybrid search (substring
+    + semantic embeddings) by default. Use --no-rank for raw recency order.
 
     Examples:
       anamne search postgres
       anamne search "python preference" --limit 5
+      anamne search auth --tag security
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     if no_rank:
-        results = store.search_facts(query, limit=limit)
+        results = store.search_facts(query, limit=limit, tags=tag or None)
     else:
-        results = store.search_facts_ranked(query, limit=limit)
+        # Get ranked results then apply tag filter
+        results = store.search_facts_ranked(query, limit=limit * 2)
+        if tag:
+            tag_set = set(tag)
+            results = [f for f in results if tag_set.intersection(f.get("tags", []))]
+        results = results[:limit]
 
     if not results:
         console.print(f"[dim]No scratchpad facts matching '[bold]{query}[/bold]'.[/dim]")
@@ -1014,6 +1026,55 @@ def working(
 
 
 @app.command()
+def clear(
+    layer: str = typer.Argument(
+        ...,
+        help="Memory layer to clear: scratchpad | working | episodic | all"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Clear an entire memory layer (irreversible).
+
+    Layers:
+      scratchpad  — all durable facts and their ACT-R retrieval history
+      working     — all active working-memory notes
+      episodic    — all indexed decisions and commit history
+      all         — everything above
+
+    Examples:
+      anamne clear working               # wipe session notes
+      anamne clear scratchpad --yes      # skip confirmation
+    """
+    valid = {"scratchpad", "working", "episodic", "all"}
+    if layer not in valid:
+        console.print(
+            f"[red]Unknown layer: {layer}[/red] — choose from: {', '.join(sorted(valid))}"
+        )
+        raise typer.Exit(1)
+
+    if not yes:
+        confirm_msg = f"Delete ALL {layer} memory? This cannot be undone."
+        if not typer.confirm(confirm_msg, default=False):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+
+    if layer in ("scratchpad", "all"):
+        n = store.clear_scratchpad()
+        console.print(f"[green]Cleared[/green] {n} scratchpad fact(s)")
+
+    if layer in ("working", "all"):
+        n = store.clear_working()
+        console.print(f"[green]Cleared[/green] {n} working memory note(s)")
+
+    if layer in ("episodic", "all"):
+        n = store.clear_episodic()
+        console.print(f"[green]Cleared[/green] {n} episodic decision(s)")
+
+
+@app.command()
 def status() -> None:
     """Show knowledge base stats."""
     from anamne.config import get_settings
@@ -1036,8 +1097,13 @@ def status() -> None:
     fact_count = store.fact_count()
     work_count = len(store.working_active())
 
+    scratch_in_chroma = store._scratch_col.count()
     table.add_row("Episodic memory", f"[bold]{count}[/bold] decisions")
-    table.add_row("Scratchpad facts", f"[bold]{fact_count}[/bold] facts")
+    table.add_row(
+        "Scratchpad facts",
+        f"[bold]{fact_count}[/bold] facts  "
+        f"[dim]({scratch_in_chroma} embedded for semantic search)[/dim]",
+    )
     table.add_row("Working memory", f"[bold]{work_count}[/bold] active notes")
     table.add_row(
         "Status",
