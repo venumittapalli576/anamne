@@ -148,7 +148,7 @@ def ask(self, question: str, ...) -> str:
     tail = episodic[3:]
     compressed = self._compress_tail(tail, question) if tail else None
 
-    # Format with provenance tags, send to LLM
+    # Format with citations, send to LLM
     prompt = _ORACLE_PROMPT.format(
         working=self._format_working(working),
         facts=self._format_facts(facts),
@@ -239,7 +239,7 @@ would make the "brain-inspired" claim genuinely precise rather than loosely meta
 
 ## Code
 
-[github.com/venumittapalli576/provenance](https://github.com/venumittapalli576/provenance)
+[github.com/venumittapalli576/anamne](https://github.com/venumittapalli576/anamne)
 
 MIT license. One-command install. Bring your own key. Zero telemetry.
 

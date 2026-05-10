@@ -10,8 +10,8 @@ build/
 .venv/
 venv/
 
-# PROVENANCE data — stays local
-.provenance/
+# ANAMNE data — stays local
+.anamne/
 
 # IDE
 .vscode/
@@ -23,7 +23,7 @@ venv/
 Thumbs.db
 
 # Generated artifacts
-PROVENANCE_*.docx
+ANAMNE_*.docx
 scripts/node_modules/
 scripts/package-lock.json
 scripts/package.json

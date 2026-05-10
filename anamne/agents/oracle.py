@@ -58,8 +58,8 @@ Instructions:
 - If multiple layers contradict, prefer scratchpad > working > episodic and call out the conflict.
 - If a decision is marked POTENTIALLY STALE, surface that.
 - If the memory doesn't contain enough info, say so explicitly and suggest:
-    `ANAMNE remember "..."`  to add a fact, or
-    `ANAMNE index <repo>`    to capture more episodic memory.
+    `anamne remember "..."`  to add a fact, or
+    `anamne index <repo>`    to capture more episodic memory.
 - Be direct and specific. Skip filler.
 
 Structure your answer:
@@ -117,7 +117,8 @@ class OracleAgent:
         """Cross-layer recall with ACC-style bounded context. Returns markdown."""
         # 1. Pull candidates from all three layers
         episodic = self._store.search(question, n_results=n_episodic)
-        facts = self._store.search_facts(question, limit=n_facts)
+        # ACT-R: use activation-ranked search for scratchpad (real decay formula)
+        facts = self._store.search_facts_ranked(question, limit=n_facts)
         working = self._store.working_active()[:n_working]
 
         # If everything is empty, bail out early without an LLM call
@@ -125,13 +126,12 @@ class OracleAgent:
             return (
                 "**No memory found.**\n\n"
                 "Try one of these to seed the knowledge base:\n"
-                '- `ANAMNE remember "..."` to add a durable fact\n'
-                "- `ANAMNE index <repo>` to capture git history\n"
-                '- `ANAMNE working "..."` to note current session context'
+                '- `anamne remember "..."` to add a durable fact\n'
+                "- `anamne index <repo>` to capture git history\n"
+                '- `anamne working "..."` to note current session context'
             )
 
-        # 2. Update last_used timestamp on facts we're about to surface
-        # (lightweight implementation of activation/usage tracking from ACT-R)
+        # 2. Log this retrieval to the ACT-R retrieval_log (feeds future decay scores)
         if facts:
             self._store.touch_facts([f["id"] for f in facts])
 
@@ -147,7 +147,7 @@ class OracleAgent:
                 f"items — ACC-style bounded state):\n{summary}\n\n"
             )
 
-        # 4. Format each layer with explicit ANAMNE
+        # 4. Format each layer with explicit provenance citations
         prompt = _ORACLE_PROMPT.format(
             working=self._format_working(working),
             facts=self._format_facts(facts),

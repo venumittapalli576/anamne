@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS working_memory (
     expires_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_working_exp ON working_memory(expires_at);
+
+-- ACT-R retrieval log: every time a scratchpad fact is surfaced, log it.
+-- Used to compute the real ACT-R activation formula:
+--   A_i = ln( sum( t_j^(-d) ) )
+-- where t_j = seconds since the j-th retrieval and d = decay constant (0.5).
+-- More retrievals + more recent retrievals = higher activation = ranked higher.
+CREATE TABLE IF NOT EXISTS retrieval_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id      TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_retrieval_fact ON retrieval_log(fact_id);
+CREATE INDEX IF NOT EXISTS idx_retrieval_time ON retrieval_log(retrieved_at);
 """
 
 
@@ -215,16 +228,16 @@ class DecisionStore:
             return cur.rowcount > 0
 
     def touch_facts(self, mem_ids: list[str]) -> None:
-        """Mark facts as used (ACT-R-style activation tracking).
+        """Mark facts as used — updates scratchpad stats AND logs to retrieval_log.
 
-        Updates last_used_at and increments use_count. Lets future ranking
-        prefer facts that are recently/frequently relevant.
+        The retrieval_log is what makes ACT-R decay computable: every retrieval
+        event is timestamped so activation_score() can apply the real formula.
         """
         if not mem_ids:
             return
-        from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
         placeholders = ",".join("?" * len(mem_ids))
+        log_rows = [(mid, now) for mid in mem_ids]
         with sqlite3.connect(self._db) as con:
             con.execute(
                 f"UPDATE scratchpad "
@@ -232,6 +245,62 @@ class DecisionStore:
                 f"WHERE id IN ({placeholders})",
                 [now, *mem_ids],
             )
+            con.executemany(
+                "INSERT INTO retrieval_log (fact_id, retrieved_at) VALUES (?, ?)",
+                log_rows,
+            )
+
+    def activation_score(self, fact_id: str, decay: float = 0.5) -> float:
+        """Compute the ACT-R base-level activation for a scratchpad fact.
+
+        Formula (Anderson & Lebiere 1998):
+            A_i = ln( sum( t_j^(-d) ) )
+
+        where t_j is the elapsed time in seconds since the j-th retrieval
+        and d is the decay parameter (default 0.5 per ACT-R convention).
+
+        A fact retrieved once five minutes ago and again just now scores
+        much higher than one retrieved once a week ago — recency AND
+        frequency both contribute.
+
+        Returns 0.0 if the fact has never been retrieved.
+        """
+        import math
+        now = datetime.now(timezone.utc)
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT retrieved_at FROM retrieval_log WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchall()
+
+        if not rows:
+            return 0.0
+
+        total = 0.0
+        for (retrieved_at,) in rows:
+            t = (now - datetime.fromisoformat(retrieved_at)).total_seconds()
+            if t > 0:
+                total += t ** (-decay)
+
+        return math.log(total) if total > 0 else 0.0
+
+    def search_facts_ranked(self, query: str, limit: int = 10) -> list[dict]:
+        """Substring search over scratchpad facts, re-ranked by ACT-R activation.
+
+        Falls back to last_used_at order when activation is zero (unaccessed facts).
+        """
+        raw = self.search_facts(query, limit=limit * 2)  # over-fetch, then re-rank
+        if not raw:
+            return []
+
+        scored = []
+        for f in raw:
+            score = self.activation_score(f["id"])
+            scored.append((score, f))
+
+        # Sort: higher activation first; break ties by last_used_at (already in raw)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [f for _, f in scored[:limit]]
 
     def fact_count(self) -> int:
         with sqlite3.connect(self._db) as con:

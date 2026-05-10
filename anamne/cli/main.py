@@ -22,7 +22,7 @@ from rich.text import Text
 
 app = typer.Typer(
     name="anamne",
-    help="[bold green]ANAMNE[/bold green] - The living memory of [italic]why[/italic] your code exists.",
+    help="[bold green]ANAMNE[/bold green] - Brain-inspired personal memory layer for AI tools.",
     rich_markup_mode="rich",
     no_args_is_help=True,
     add_completion=False,
@@ -208,7 +208,7 @@ def index(
 def ask(
     question: str = typer.Argument(..., help="Your WHY question about the codebase"),
 ) -> None:
-    """Ask the Oracle why something was built a certain way."""
+    """Ask a question — recalls across all three memory layers with citations."""
     _require_api_key()
     from anamne.agents.oracle import OracleAgent
 

@@ -1,11 +1,10 @@
 ﻿"""
 ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
 
-Tools exposed:
-  ask_why           — answer WHY questions about the codebase
-  search_decisions  — raw search returning decision records
-  get_file_context  — all decisions related to a specific file
-  get_stats         — knowledge base stats
+Exposes 11 memory tools covering all three LIGHT layers:
+  Episodic : ask_why, search_decisions, get_file_context, get_stats
+  Scratchpad: remember, list_facts, forget_fact, search_facts, consolidate_facts
+  Working  : working_memory_add, working_memory_active
 """
 
 from __future__ import annotations
@@ -16,12 +15,14 @@ from anamne.agents.oracle import OracleAgent
 from anamne.store.graph import DecisionStore
 
 mcp = FastMCP(
-    name="ANAMNE",
+    name="anamne",
     instructions=(
-        "ANAMNE is the WHY layer of your codebase. "
-        "Use ask_why to understand architectural decisions. "
-        "Use search_decisions to find relevant past decisions. "
-        "Use get_file_context before editing a file to understand its history."
+        "ANAMNE is a brain-inspired personal memory layer. "
+        "Use remember() to store facts the user wants kept across sessions. "
+        "Use ask_why() or recall via search_decisions() to surface relevant memory. "
+        "Use working_memory_add() for short-lived session context. "
+        "Use get_file_context() before editing a file to understand its history. "
+        "Use consolidate_facts() periodically to merge redundant scratchpad entries."
     ),
 )
 
@@ -94,7 +95,7 @@ def get_stats() -> dict:
         "facts_in_scratchpad": _store.fact_count(),
         "working_memory_items": len(_store.working_active()),
         "status": "ready" if count > 0 else "empty",
-        "hint": "Run: ANAMNE index <repo-path>" if count == 0 else None,
+        "hint": "Run: anamne index <repo-path>" if count == 0 else None,
     }
 
 

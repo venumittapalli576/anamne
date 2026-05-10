@@ -1,11 +1,11 @@
-"""
+﻿"""
 Creates a realistic test git repository with meaningful commit history
-so you can demo PROVENANCE without needing your own codebase.
+so you can demo ANAMNE without needing your own codebase.
 
 Usage:
     python scripts/create_test_repo.py
-    provenance index ./test-repo
-    provenance ask "why was Redis added?"
+    ANAMNE index ./test-repo
+    ANAMNE ask "why was Redis added?"
 """
 
 import os
@@ -97,7 +97,7 @@ def main() -> None:
 
     REPO.mkdir()
     run("git init", cwd=REPO)
-    run('git config user.email "demo@provenance.ai"', cwd=REPO)
+    run('git config user.email "demo@ANAMNE.ai"', cwd=REPO)
     run('git config user.name "Demo User"', cwd=REPO)
 
     for filename, content, message in COMMITS:
@@ -114,10 +114,10 @@ def main() -> None:
     print(f"[OK] Created test repo at {REPO.resolve()}")
     print(f"  {len(COMMITS)} commits with meaningful architectural decisions\n")
     print("Now run:")
-    print(f"  provenance index {REPO}")
-    print('  provenance ask "why was Redis added?"')
-    print('  provenance ask "why was JWT replaced?"')
-    print('  provenance ask "why was Elasticsearch chosen over PostgreSQL search?"')
+    print(f"  ANAMNE index {REPO}")
+    print('  ANAMNE ask "why was Redis added?"')
+    print('  ANAMNE ask "why was JWT replaced?"')
+    print('  ANAMNE ask "why was Elasticsearch chosen over PostgreSQL search?"')
 
 
 if __name__ == "__main__":
