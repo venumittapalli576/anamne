@@ -2,9 +2,11 @@
 
 > A local-first, brain-inspired memory layer for Claude, Cursor, ChatGPT, and any MCP-compatible AI tool.
 
+[![PyPI version](https://img.shields.io/pypi/v/anamne.svg)](https://pypi.org/project/anamne/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://python.org)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io)
+[![CI](https://github.com/venumittapalli576/anamne/actions/workflows/ci.yml/badge.svg)](https://github.com/venumittapalli576/anamne/actions/workflows/ci.yml)
 
 ---
 
@@ -71,6 +73,10 @@ into a compact summary before being sent to the LLM — this is the ACC paper's 
 pip install anamne
 anamne init
 ```
+
+That's it — one command installs everything, the wizard handles the rest.
+
+> **From source:** `git clone https://github.com/venumittapalli576/anamne && pip install -e .`
 
 The wizard detects your API keys and picks a model. You can also set one manually:
 
