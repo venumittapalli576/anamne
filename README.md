@@ -140,6 +140,11 @@ anamne capture-clipboard --distill   # LLM extracts multiple facts
 anamne recall "why did we switch from MySQL?"
 anamne recall "payment architecture" --stream  # stream tokens as they arrive
 
+# Ask a question scoped to one layer (faster, no LLM for scratchpad/working)
+anamne ask "postgres preference" --layer scratchpad
+anamne ask "current focus" --layer working
+anamne ask "deployment decisions" --layer episodic --stream
+
 # Direct scratchpad search — fast, ACT-R ranked, no API key needed
 anamne search postgres
 anamne search "python preference" --limit 5 --tag backend
@@ -149,6 +154,8 @@ anamne search deploy --pinned       # only pinned facts
 anamne facts
 anamne facts --tag python --limit 10
 anamne facts --pinned               # only pinned facts
+anamne facts --from 2026-05-01 --to 2026-05-11   # date-range filter
+anamne facts --sort activation      # sort by ACT-R score
 
 # Show most recently added facts (quick journal-style review)
 anamne recent
@@ -250,6 +257,10 @@ anamne status
 
 # Detailed analytics: most-accessed facts, creation histogram, ACT-R summary, tag breakdown
 anamne stats
+
+# Tag distribution + co-occurrence analysis
+anamne tag-stats
+anamne tag-stats --top 30 --history   # include monthly growth per tag
 ```
 
 ### Backup, restore, and sharing

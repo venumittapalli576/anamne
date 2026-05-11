@@ -4,6 +4,32 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.14.0] — 2026-05-11
+
+### Added - Phase 14
+
+**`anamne facts --from / --to`** - date-range filter
+- `anamne facts --from 2026-05-01 --to 2026-05-11` - facts created in the date window
+- Either bound is optional; values are ISO `YYYY-MM-DD`
+- Composes with `--tag`, `--pinned`, `--sort`, `--limit`
+
+**`anamne ask --layer episodic|scratchpad|working`** - layer-scoped questions
+- `anamne ask "postgres" --layer scratchpad` - instant scratchpad search, no LLM
+- `anamne ask "current focus" --layer working` - dump active working memory
+- `--layer episodic` (default for episodic-only) routes through the Oracle as before
+- `anamne ask --stream` streams the Oracle answer token-by-token (same as `recall --stream`)
+
+**`anamne tag-stats`** - tag distribution + co-occurrence analytics
+- Top-N tags table (`--top 20` default) with fact counts
+- Co-occurrence: for each top tag, lists the tags that appear with it most often
+- `--history` adds a monthly facts-tagged breakdown for the top tags
+- Useful for spotting clusters and renaming opportunities
+
+### Tests
+- 72 tests, all passing
+
+---
+
 ## [0.13.0] — 2026-05-11
 
 ### Added - Phase 13

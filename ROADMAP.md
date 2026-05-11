@@ -198,12 +198,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 14 - Future ideas
+## What's Built (v0.14.0)
+
+| Feature | Status |
+|---|---|
+| `anamne facts --from YYYY-MM-DD --to YYYY-MM-DD` - date-range filter | ✅ |
+| `anamne ask --layer episodic\|scratchpad\|working` - layer-scoped queries | ✅ |
+| `anamne ask --stream` - token-by-token streaming output | ✅ |
+| `anamne tag-stats` - tag distribution + co-occurrence analysis | ✅ |
+| `anamne tag-stats --history` - monthly facts-tagged breakdown | ✅ |
+
+---
+
+## Phase 15 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
-- **`anamne facts --from DATE --to DATE`** - date-range filter
+- **`anamne ask --layer episodic+scratchpad`** - compound layer filter
 
 ---
 

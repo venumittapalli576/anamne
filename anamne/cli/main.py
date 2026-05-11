@@ -29,6 +29,7 @@ Working memory (session-scoped):
 
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
+  tag-stats         - tag analytics: counts, co-occurrence, monthly growth
   recap             - LLM narrative of today's memory activity (--days, --no-llm)
   dedupe            - find and remove exact-text duplicate facts (no LLM required)
   pin               - protect a fact from auto-consolidation
@@ -489,13 +490,70 @@ def watch_repos(
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="Your WHY question about the codebase"),
+    layer: Optional[str] = typer.Option(
+        None, "--layer", "-l",
+        help="Restrict to one layer: episodic | scratchpad | working"
+    ),
+    stream: bool = typer.Option(
+        False, "--stream", "-s",
+        help="Stream LLM answer token-by-token"
+    ),
 ) -> None:
-    """Ask a question  - recalls across all three memory layers with citations."""
+    """Ask a question - recalls across all three memory layers with citations.
+
+    Use --layer to restrict to a single memory layer:
+      episodic    - only git/ADR decisions
+      scratchpad  - only durable facts (no LLM needed)
+      working     - only active session notes (no LLM needed)
+
+    Use --stream for streaming LLM output (lower latency to first token).
+
+    Examples:
+      anamne ask "why did we choose PostgreSQL?"
+      anamne ask "what DB tech do we use?" --layer scratchpad
+      anamne ask "any active debugging context?" --layer working
+      anamne ask "architecture overview" --stream
+    """
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+
+    # Layer-specific shortcuts (no LLM needed)
+    if layer == "scratchpad":
+        results = store.search_facts_ranked(question, limit=10)
+        if not results:
+            console.print("[dim]No matching scratchpad facts.[/dim]")
+            return
+        console.print(f"\n[bold cyan]Scratchpad facts matching '{question}':[/bold cyan]\n")
+        for f in results:
+            tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
+            console.print(f"  - {f['fact']}{tag_str}")
+        console.print()
+        return
+
+    if layer == "working":
+        items = store.working_active()
+        if not items:
+            console.print("[dim]Working memory is empty.[/dim]")
+            return
+        console.print(f"\n[bold cyan]Active working memory ({len(items)} notes):[/bold cyan]\n")
+        for w in items:
+            console.print(f"  [dim]{w['id']}[/dim]  {w['note']}")
+            console.print(f"           [dim]expires: {w['expires_at']}[/dim]")
+        console.print()
+        return
+
+    if layer and layer not in ("episodic", "scratchpad", "working", None):
+        console.print(f"[red]Unknown layer: {layer}[/red]  - choose: episodic | scratchpad | working")
+        raise typer.Exit(1)
+
     _require_api_key()
     from anamne.agents.oracle import OracleAgent
 
-    agent = OracleAgent()
-    agent.ask_pretty(question)
+    agent = OracleAgent(store=store)
+    if stream:
+        agent.ask_stream(question)
+    else:
+        agent.ask_pretty(question)
 
 
 # ------------------------------------------------------------------ #
@@ -1011,8 +1069,14 @@ def facts(
         "recency", "--sort", "-s",
         help="Sort order: recency (default) | activation | created"
     ),
+    from_date: Optional[str] = typer.Option(
+        None, "--from", metavar="YYYY-MM-DD", help="Only facts created on or after this date"
+    ),
+    to_date: Optional[str] = typer.Option(
+        None, "--to", metavar="YYYY-MM-DD", help="Only facts created on or before this date"
+    ),
 ) -> None:
-    """List facts in scratchpad memory, optionally filtered by tag or pin status.
+    """List facts in scratchpad memory, optionally filtered by tag, date, or pin status.
 
     Sort options:
       recency    - most recently *used* first (default, ACT-R friendly)
@@ -1024,13 +1088,22 @@ def facts(
       anamne facts --tag python --limit 10
       anamne facts --pinned
       anamne facts --sort activation
+      anamne facts --from 2026-05-01 --to 2026-05-11
+      anamne facts --from 2026-05-01 --tag journal
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
-    fetch_limit = limit * 3 if (pinned_only or sort == "activation") else limit
+    fetch_limit = limit * 5 if (pinned_only or sort == "activation" or from_date or to_date) else limit
     rows = store.list_facts(limit=fetch_limit, tags=tag or None)
+
     if pinned_only:
         rows = [f for f in rows if f.get("pinned")]
+    if from_date:
+        rows = [f for f in rows if (f.get("created_at") or "") >= from_date]
+    if to_date:
+        # Include full to_date day (compare with day+1 string for ISO sort)
+        rows = [f for f in rows if (f.get("created_at") or "") <= to_date + "T23:59:59"]
+
     if sort == "activation":
         rows = sorted(rows, key=lambda f: store.activation_score(f["id"]), reverse=True)
     elif sort == "created":
@@ -1041,13 +1114,16 @@ def facts(
             console.print("[dim]No pinned facts. Use [bold]anamne pin <id>[/bold] to protect a fact.[/dim]")
         elif tag:
             console.print(f"[dim]No facts tagged: {', '.join(tag)}[/dim]")
+        elif from_date or to_date:
+            console.print(f"[dim]No facts in the specified date range.[/dim]")
         else:
             console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
         return
     for f in rows:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
         pin_str = "  [green][pin][/green]" if f.get("pinned") else ""
-        console.print(f"[cyan]{f['id']}[/cyan]{pin_str}  {f['fact']}{tag_str}")
+        date_str = f"  [dim]{f['created_at'][:10]}[/dim]" if (from_date or to_date) else ""
+        console.print(f"[cyan]{f['id']}[/cyan]{pin_str}{date_str}  {f['fact']}{tag_str}")
 
 
 @app.command()
@@ -2726,6 +2802,108 @@ def stats() -> None:
         if untagged:
             tag_table.add_row("[dim](untagged)[/dim]", str(untagged), f"{100*untagged/fact_count:.0f}%")
         console.print(tag_table)
+        console.print()
+
+
+@app.command(name="tag-stats")
+def tag_stats(
+    top: int = typer.Option(20, "--top", "-n", help="Show top N tags"),
+    history: bool = typer.Option(
+        False, "--history", help="Show tag growth by month (requires facts with creation dates)"
+    ),
+) -> None:
+    """Show detailed tag analytics: counts, coverage, growth over time.
+
+    Complements `anamne stats` with a tag-specific deep dive:
+      - Tag count table with fact count, percentage share, and pinned-fact count
+      - Co-occurrence: which tags appear together most often
+      - Optional monthly growth breakdown (--history)
+
+    Examples:
+      anamne tag-stats
+      anamne tag-stats --top 30
+      anamne tag-stats --history
+    """
+    import sqlite3
+    import json as _json
+    from collections import Counter, defaultdict
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    fact_count = store.fact_count()
+    if fact_count == 0:
+        console.print("[dim]No facts yet.[/dim]")
+        return
+
+    with sqlite3.connect(store._db) as con:
+        rows = con.execute(
+            "SELECT id, tags, created_at, COALESCE(pinned,0) FROM scratchpad"
+        ).fetchall()
+
+    # Parse
+    tag_facts: dict = defaultdict(list)
+    tag_pinned: Counter = Counter()
+    co_occur: dict = defaultdict(Counter)
+    month_tags: dict = defaultdict(Counter)  # month -> tag -> count
+
+    for fid, tags_json, created_at, pinned in rows:
+        try:
+            tags = _json.loads(tags_json)
+        except Exception:
+            tags = []
+        for t in tags:
+            tag_facts[t].append(fid)
+            if pinned:
+                tag_pinned[t] += 1
+        # Co-occurrence
+        for i, t1 in enumerate(tags):
+            for t2 in tags[i+1:]:
+                co_occur[t1][t2] += 1
+                co_occur[t2][t1] += 1
+        # Monthly
+        if created_at and history:
+            month = created_at[:7]  # YYYY-MM
+            for t in tags:
+                month_tags[month][t] += 1
+
+    tag_counts: Counter = Counter({t: len(fids) for t, fids in tag_facts.items()})
+    untagged = sum(1 for _, tags_json, _, _ in rows if not _json.loads(tags_json or "[]"))
+
+    console.print()
+    console.print(f"[bold cyan]Tag Statistics[/bold cyan]  "
+                  f"({len(tag_counts)} unique tags, {untagged} untagged facts)\n")
+
+    # Main table
+    tbl = Table(border_style="cyan", padding=(0, 2))
+    tbl.add_column("Tag", style="cyan")
+    tbl.add_column("Facts", justify="right")
+    tbl.add_column("Share", justify="right")
+    tbl.add_column("Pinned", justify="right")
+    tbl.add_column("Co-occurs most with", style="dim")
+    for tag_name, cnt in tag_counts.most_common(top):
+        pct = 100 * cnt / fact_count
+        pinned_cnt = tag_pinned.get(tag_name, 0)
+        co_top = ", ".join(
+            f"{t}:{n}" for t, n in co_occur[tag_name].most_common(3)
+        ) if co_occur[tag_name] else "-"
+        tbl.add_row(
+            tag_name, str(cnt), f"{pct:.0f}%",
+            str(pinned_cnt) if pinned_cnt else "-",
+            co_top,
+        )
+    if untagged:
+        tbl.add_row("[dim](untagged)[/dim]", str(untagged),
+                    f"{100*untagged/fact_count:.0f}%", "-", "-")
+    console.print(tbl)
+    console.print()
+
+    # Monthly history
+    if history and month_tags:
+        console.print("[bold]Monthly tag activity:[/bold]\n")
+        for month in sorted(month_tags.keys()):
+            top3 = ", ".join(f"{t}:{n}" for t, n in month_tags[month].most_common(3))
+            total_in_month = sum(month_tags[month].values())
+            console.print(f"  [dim]{month}[/dim]  {total_in_month:3d} tag-uses  {top3}")
         console.print()
 
 
