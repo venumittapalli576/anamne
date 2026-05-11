@@ -334,6 +334,16 @@ anamne import-memory old-machine.json --no-working      # skip working memory
 anamne doctor
 ```
 
+### Interactive shell
+
+```bash
+# Persistent REPL - run anamne commands without re-launching the CLI
+anamne shell
+# anamne> search postgres
+# anamne> remember "we deploy on Fridays only"
+# anamne> exit
+```
+
 ### Local web dashboard
 
 ```bash

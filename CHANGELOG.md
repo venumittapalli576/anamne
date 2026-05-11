@@ -4,6 +4,23 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.21.0] — 2026-05-11
+
+### Added - Phase 21
+
+**`anamne shell`** - interactive REPL
+- Persistent prompt that runs ANAMNE commands without re-launching the CLI
+- Built-in commands: search, similar, remember, journal, working, ask, info,
+  history, recent, tags, status, help, exit
+- Catches Ctrl-C and EOF gracefully
+- Each command operates on the same `DecisionStore` instance, avoiding the
+  startup cost of re-opening SQLite + ChromaDB on every command
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.20.0] — 2026-05-11
 
 ### Added - Phase 20

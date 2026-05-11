@@ -278,13 +278,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 21 - Future ideas
+## What's Built (v0.21.0)
+
+| Feature | Status |
+|---|---|
+| `anamne shell` - interactive REPL (no extra deps) | ✅ |
+| Built-in shell commands: search, similar, remember, journal, working, ask | ✅ |
+| Built-in shell commands: info, history, recent, tags, status, help, exit | ✅ |
+
+---
+
+## Phase 22 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne shell`** - persistent REPL with command history
+- **`anamne shell` tab completion** with `readline`
+- **`anamne tail`** - live tail of memory events
 
 ---
 

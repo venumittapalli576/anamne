@@ -3638,6 +3638,152 @@ def mcp_server() -> None:
 
 
 @app.command()
+def shell() -> None:
+    """Interactive REPL for ANAMNE - run commands without re-launching the CLI.
+
+    Built-in commands inside the shell:
+      search <query>        - hybrid scratchpad search
+      similar <text>        - pure-semantic search
+      remember <text>       - store a durable fact
+      journal <text>        - timestamped journal entry
+      working <text>        - add a working-memory note
+      ask <question>        - cross-layer recall (needs API key)
+      info <id>             - full details of a fact
+      history <id>          - change log for a fact
+      recent [N]            - latest N facts (default 10)
+      tags                  - list all tags with counts
+      status                - quick stats summary
+      help                  - show this help
+      exit | quit | Ctrl-D  - leave the shell
+
+    Examples:
+      anamne shell
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+
+    console.print()
+    console.print("[bold cyan]ANAMNE shell[/bold cyan]  [dim](type 'help' or 'exit')[/dim]")
+    console.print()
+
+    def _print_help() -> None:
+        console.print(
+            "  [bold]Commands:[/bold] search, similar, remember, journal, working, "
+            "ask, info, history, recent, tags, status, help, exit"
+        )
+
+    while True:
+        try:
+            line = input("anamne> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]bye[/dim]")
+            return
+
+        if not line:
+            continue
+        if line in {"exit", "quit", ":q"}:
+            console.print("[dim]bye[/dim]")
+            return
+        if line == "help":
+            _print_help()
+            continue
+
+        parts = line.split(maxsplit=1)
+        cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        try:
+            if cmd == "search" and arg:
+                results = store.search_facts_ranked(arg, limit=10)
+                if not results:
+                    console.print("  [dim]no matches[/dim]")
+                for f in results:
+                    pin = " [yellow]*[/yellow]" if f.get("pinned") else ""
+                    console.print(f"  [cyan]{f['id']}[/cyan]{pin}  {f['fact'][:90]}")
+            elif cmd == "similar" and arg:
+                results = store.search_facts_semantic(arg, limit=10)
+                if not results:
+                    console.print("  [dim]no matches[/dim]")
+                for f in results:
+                    console.print(f"  [cyan]{f['id']}[/cyan]  {f['fact'][:90]}")
+            elif cmd == "remember" and arg:
+                mid = store.remember(arg)
+                console.print(f"  [green]saved[/green] [cyan]{mid}[/cyan]")
+            elif cmd == "journal" and arg:
+                mid = store.remember(arg, tags=["journal"])
+                console.print(f"  [green]journal[/green] [cyan]{mid}[/cyan]")
+            elif cmd == "working" and arg:
+                wid = store.working_add(arg)
+                console.print(f"  [green]working[/green] [cyan]{wid}[/cyan]")
+            elif cmd == "ask" and arg:
+                try:
+                    from anamne.agents.oracle import OracleAgent
+                    from anamne.llm import LLMClient
+                    agent = OracleAgent(store=store, llm=LLMClient())
+                    answer = agent.ask(arg)
+                    console.print(answer)
+                except Exception as e:
+                    console.print(f"  [red]ask failed:[/red] {e}")
+            elif cmd == "info" and arg:
+                fact = store.get_fact(arg)
+                if not fact:
+                    console.print("  [red]not found[/red]")
+                else:
+                    console.print(f"  [cyan]{fact['id']}[/cyan]  {fact['fact']}")
+                    console.print(f"  tags: {', '.join(fact['tags']) or '-'}")
+                    console.print(f"  created: {fact['created_at']}  "
+                                  f"pinned: {fact.get('pinned')}")
+            elif cmd == "history" and arg:
+                hist = store.get_fact_history(arg)
+                if not hist:
+                    console.print("  [dim]no history[/dim]")
+                for h in hist[-10:]:
+                    console.print(
+                        f"  [dim]{h['changed_at'][:19]}[/dim]  "
+                        f"{h['change_type']:18}  {(h.get('content') or '')[:60]}"
+                    )
+            elif cmd == "recent":
+                n = int(arg) if arg.isdigit() else 10
+                import sqlite3
+                with sqlite3.connect(store._db) as con:
+                    rows = con.execute(
+                        "SELECT id, fact, created_at FROM scratchpad "
+                        "ORDER BY created_at DESC LIMIT ?", (n,),
+                    ).fetchall()
+                for fid, fact, created in rows:
+                    console.print(
+                        f"  [dim]{created[:10]}[/dim]  [cyan]{fid}[/cyan]  {fact[:80]}"
+                    )
+            elif cmd == "tags":
+                from collections import Counter
+                counter: Counter = Counter()
+                for f in store.list_facts(limit=10_000):
+                    for t in (f.get("tags") or []):
+                        counter[t] += 1
+                if not counter:
+                    console.print("  [dim]no tags[/dim]")
+                for t, n in counter.most_common(30):
+                    console.print(f"  [cyan]{t:30}[/cyan]  {n}")
+            elif cmd == "status":
+                facts = store.fact_count()
+                eps = store.count()
+                work = len(store.working_active())
+                console.print(
+                    f"  scratchpad: [bold]{facts}[/bold]   "
+                    f"episodic: [bold]{eps}[/bold]   "
+                    f"working: [bold]{work}[/bold]"
+                )
+            else:
+                console.print(
+                    "  [yellow]unknown or missing argument.[/yellow]  "
+                    "type [bold]help[/bold]"
+                )
+        except Exception as e:
+            console.print(f"  [red]error:[/red] {e}")
+
+
+@app.command()
 def ui(
     port: int = typer.Option(8765, "--port", "-p", help="Local port to listen on"),
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
