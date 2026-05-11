@@ -1,5 +1,5 @@
 ﻿"""
-ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
+ANAMNE MCP Server  - plug into Cursor, Claude Code, or any MCP client.
 
 Exposes 16 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
@@ -250,7 +250,7 @@ def consolidate_facts(
 
     Args:
         dry_run: if True, returns the merge plan without writing anything.
-        threshold: Jaccard similarity threshold for grouping (0.0–1.0).
+        threshold: Jaccard similarity threshold for grouping (0.0-1.0).
     """
     from anamne.agents.oracle import OracleAgent
     agent = OracleAgent(store=_store)

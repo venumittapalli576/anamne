@@ -3,10 +3,10 @@ Decision store: SQLite (temporal/relational) + ChromaDB (semantic search).
 
 SQLite holds the full decision records with temporal metadata.
 ChromaDB holds the embeddings for semantic similarity search on TWO collections:
-  - 'decisions'  — episodic memory (git commits, ADRs)
-  - 'scratchpad' — semantic search over durable facts (Phase 3 upgrade)
+  - 'decisions'   - episodic memory (git commits, ADRs)
+  - 'scratchpad'  - semantic search over durable facts (Phase 3 upgrade)
 
-Both are embedded — zero external services required.
+Both are embedded  - zero external services required.
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ class DecisionStore:
         return [r[0] for r in rows]
 
     # ------------------------------------------------------------------ #
-    # Scratchpad — durable user-provided facts                              #
+    # Scratchpad  - durable user-provided facts                              #
     # ------------------------------------------------------------------ #
 
     def remember(self, fact: str, tags: Optional[list[str]] = None) -> str:
@@ -420,7 +420,7 @@ class DecisionStore:
     def forget_fact(self, mem_id: str, _merged_into: Optional[str] = None) -> bool:
         """Delete a scratchpad fact and record a tombstone in fact_history.
 
-        _merged_into: internal — set by consolidation to link the deletion to the
+        _merged_into: internal  - set by consolidation to link the deletion to the
         surviving merged fact.  Not part of the public API.
         """
         with sqlite3.connect(self._db) as con:
@@ -462,7 +462,7 @@ class DecisionStore:
         ]
 
     def touch_facts(self, mem_ids: list[str]) -> None:
-        """Mark facts as used — updates scratchpad stats AND logs to retrieval_log.
+        """Mark facts as used  - updates scratchpad stats AND logs to retrieval_log.
 
         The retrieval_log is what makes ACT-R decay computable: every retrieval
         event is timestamped so activation_score() can apply the real formula.
@@ -494,7 +494,7 @@ class DecisionStore:
         and d is the decay parameter (default 0.5 per ACT-R convention).
 
         A fact retrieved once five minutes ago and again just now scores
-        much higher than one retrieved once a week ago — recency AND
+        much higher than one retrieved once a week ago  - recency AND
         frequency both contribute.
 
         Returns 0.0 if the fact has never been retrieved.
@@ -582,7 +582,7 @@ class DecisionStore:
             return con.execute("SELECT COUNT(*) FROM scratchpad").fetchone()[0]
 
     # ------------------------------------------------------------------ #
-    # Working memory — short-lived session context                          #
+    # Working memory  - short-lived session context                          #
     # ------------------------------------------------------------------ #
 
     def working_add(self, note: str, ttl_minutes: int = 60) -> str:

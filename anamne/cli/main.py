@@ -76,11 +76,11 @@ def _main(
 console = Console()
 
 _BANNER = """[bold green]
-╔═══════════════════════════════════════╗
-║   A N A M N E   v0.3.1               ║
-║   Brain-inspired personal memory      ║
-║   layer for AI tools.                 ║
-╚═══════════════════════════════════════╝[/bold green]"""
++---------------------------------------+
+|   A N A M N E                        |
+|   Brain-inspired personal memory      |
+|   layer for AI tools.                 |
++---------------------------------------+[/bold green]"""
 
 
 def _require_api_key() -> None:
@@ -256,7 +256,7 @@ def sync(
         None, "--adr-dir", help="Directory containing ADR markdown files"
     ),
 ) -> None:
-    """Incrementally re-index a repository — only processes new commits.
+    """Incrementally re-index a repository  - only processes new commits.
 
     Unlike `index`, which always scans all commits, `sync` skips commits
     already processed and only extracts decisions from new ones. Run this
@@ -332,7 +332,7 @@ def watch(
     agent = OracleAgent(store=store)
 
     console.print(
-        f"[bold green]Watch mode[/bold green] — "
+        f"[bold green]Watch mode[/bold green]  - "
         f"consolidating every [bold]{interval}s[/bold]. "
         f"Press [dim]Ctrl+C[/dim] to stop.\n"
     )
@@ -352,13 +352,13 @@ def watch(
                 replaced = sum(len(m["replaced"]) for m in merges)
                 console.print(
                     f"[dim][run {run}] Merged {replaced} facts into "
-                    f"{len(merges)} — {store.fact_count()} remain[/dim]"
+                    f"{len(merges)}  - {store.fact_count()} remain[/dim]"
                 )
             else:
-                console.print(f"[dim][run {run}] {fact_count} facts — nothing to merge[/dim]")
+                console.print(f"[dim][run {run}] {fact_count} facts  - nothing to merge[/dim]")
         else:
             console.print(
-                f"[dim][run {run}] Only {fact_count} fact(s) — "
+                f"[dim][run {run}] Only {fact_count} fact(s)  - "
                 f"need {min_cluster}+ to consolidate[/dim]"
             )
 
@@ -373,7 +373,7 @@ def watch(
 def ask(
     question: str = typer.Argument(..., help="Your WHY question about the codebase"),
 ) -> None:
-    """Ask a question — recalls across all three memory layers with citations."""
+    """Ask a question  - recalls across all three memory layers with citations."""
     _require_api_key()
     from anamne.agents.oracle import OracleAgent
 
@@ -382,7 +382,7 @@ def ask(
 
 
 # ------------------------------------------------------------------ #
-# Memory layer commands (v0.2 — brain-inspired)                        #
+# Memory layer commands (v0.2  - brain-inspired)                        #
 # ------------------------------------------------------------------ #
 
 @app.command()
@@ -450,7 +450,7 @@ def recall(
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
-    # Scratchpad — ACT-R ranked, no LLM call needed
+    # Scratchpad  - ACT-R ranked, no LLM call needed
     facts = store.search_facts_ranked(query, limit=5)
     if facts:
         console.print("\n[bold cyan]From scratchpad:[/bold cyan]")
@@ -458,7 +458,7 @@ def recall(
             tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
             console.print(f"  - {f['fact']}{tag_str}")
 
-    # Episodic memory — uses Oracle agent
+    # Episodic memory  - uses Oracle agent
     if store.count() > 0:
         _require_api_key()
         from anamne.agents.oracle import OracleAgent
@@ -568,7 +568,7 @@ def tag(
         raise typer.Exit(1)
 
     console.print(
-        f"[green]Updated[/green] [cyan]{memory_id}[/cyan] — "
+        f"[green]Updated[/green] [cyan]{memory_id}[/cyan]  - "
         f"tags: {', '.join(new_tags) if new_tags else '(none)'}"
     )
 
@@ -626,7 +626,7 @@ def history(
     table.add_column("Change", style="cyan", width=16)
     table.add_column("Content", no_wrap=False)
     table.add_column("Tags", width=20)
-    table.add_column("Merged→", width=14)
+    table.add_column("Merged->", width=14)
 
     _type_color = {
         "created": "green",
@@ -644,7 +644,7 @@ def history(
             str(i),
             ev["changed_at"][:19].replace("T", " "),
             f"[{c}]{ev['change_type']}[/{c}]",
-            ev["content"][:80] + ("…" if len(ev["content"]) > 80 else ""),
+            ev["content"][:80] + ("..." if len(ev["content"]) > 80 else ""),
             tags_str,
             merged_str[:12] if merged_str else "",
         )
@@ -661,7 +661,7 @@ def consolidate(
     ),
     threshold: float = typer.Option(
         0.6, "--threshold", "-t",
-        help="Jaccard similarity threshold for grouping facts (0–1)"
+        help="Jaccard similarity threshold for grouping facts (0-1)"
     ),
     min_cluster: int = typer.Option(
         2, "--min-cluster", help="Minimum cluster size to merge"
@@ -684,7 +684,7 @@ def consolidate(
     fact_count = store.fact_count()
 
     if fact_count == 0:
-        console.print("[dim]Scratchpad is empty — nothing to consolidate.[/dim]")
+        console.print("[dim]Scratchpad is empty  - nothing to consolidate.[/dim]")
         return
 
     console.print(
@@ -703,7 +703,7 @@ def consolidate(
         console.print("[green]No redundant fact clusters found.[/green] Scratchpad looks clean.")
         return
 
-    mode_label = "[yellow]DRY RUN[/yellow] — " if dry_run else ""
+    mode_label = "[yellow]DRY RUN[/yellow]  - " if dry_run else ""
     console.print(f"{mode_label}[bold]{len(merges)} merge(s):[/bold]\n")
 
     for i, m in enumerate(merges, 1):
@@ -714,7 +714,7 @@ def consolidate(
 
     if dry_run:
         console.print(
-            "[yellow]Dry run — nothing changed.[/yellow] "
+            "[yellow]Dry run  - nothing changed.[/yellow] "
             "Re-run without --dry-run to apply."
         )
     else:
@@ -757,7 +757,7 @@ def journal(
 
     Examples:
       anamne journal "Chose Postgres over SQLite because we need concurrent writes"
-      anamne journal "Finally fixed the Stripe webhook double-fire — idempotency key was wrong"
+      anamne journal "Finally fixed the Stripe webhook double-fire  - idempotency key was wrong"
     """
     from datetime import date
     from anamne.store.graph import DecisionStore
@@ -830,7 +830,7 @@ def import_chat(
     import json as _json
     extract_prompt = (
         "You are reading an AI conversation transcript. Extract durable facts "
-        "that are worth keeping long-term — things that will still be useful "
+        "that are worth keeping long-term  - things that will still be useful "
         "weeks from now.\n\n"
         "Keep:\n"
         "- Personal preferences and constraints the user expressed\n"
@@ -872,7 +872,7 @@ def import_chat(
         console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run — nothing stored.[/yellow] Remove --dry-run to save.")
+        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
         return
 
     from anamne.store.graph import DecisionStore
@@ -908,7 +908,7 @@ def import_web(
     """
     _require_api_key()
 
-    console.print(f"\n[bold]Fetching[/bold] [cyan]{url}[/cyan] …\n")
+    console.print(f"\n[bold]Fetching[/bold] [cyan]{url}[/cyan] ...\n")
 
     # Fetch the page
     try:
@@ -925,7 +925,7 @@ def import_web(
         console.print(f"[red]Fetch failed:[/red] {e}")
         raise typer.Exit(1)
 
-    # Strip HTML → plain text using stdlib html.parser
+    # Strip HTML -> plain text using stdlib html.parser
     page_text = _strip_html(html)
     if len(page_text) < 100:
         console.print("[yellow]Page has very little text content.[/yellow]")
@@ -936,7 +936,7 @@ def import_web(
     domain = _urlparse(url).netloc.lstrip("www.")
 
     console.print(
-        f"[dim]Extracted {len(page_text):,} chars — distilling up to {limit} facts…[/dim]\n"
+        f"[dim]Extracted {len(page_text):,} chars  - distilling up to {limit} facts...[/dim]\n"
     )
 
     from anamne.llm import LLMClient
@@ -944,7 +944,7 @@ def import_web(
 
     llm = LLMClient()
     prompt = (
-        "You are reading a web page. Extract durable facts worth keeping long-term — "
+        "You are reading a web page. Extract durable facts worth keeping long-term  - "
         "things that are still useful weeks or months from now.\n\n"
         "Keep:\n"
         "- Core concepts, design principles, or architectural patterns described\n"
@@ -984,7 +984,7 @@ def import_web(
         console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run — nothing stored.[/yellow] Remove --dry-run to save.")
+        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
         return
 
     from anamne.store.graph import DecisionStore
@@ -1045,7 +1045,7 @@ def _parse_chat_json(raw: str, source: str) -> str:
     try:
         data = _json.loads(raw)
     except _json.JSONDecodeError:
-        # Not valid JSON — treat as text
+        # Not valid JSON  - treat as text
         return raw[:12000]
 
     lines: list[str] = []
@@ -1080,7 +1080,7 @@ def _parse_chat_json(raw: str, source: str) -> str:
                 if isinstance(content, str) and content.strip():
                     lines.append(f"User: {content.strip()[:500]}")
 
-    # Unknown structure — just dump readable content
+    # Unknown structure  - just dump readable content
     else:
         return _json.dumps(data, indent=2)[:12000]
 
@@ -1096,7 +1096,7 @@ def search(
         False, "--no-rank", help="Skip ACT-R ranking, use raw recency order"
     ),
 ) -> None:
-    """Search scratchpad facts directly — no LLM, no API key required.
+    """Search scratchpad facts directly  - no LLM, no API key required.
 
     Results are ranked by ACT-R activation (recency + frequency of use)
     so the most relevant facts surface first. Uses hybrid search (substring
@@ -1238,7 +1238,7 @@ def import_memory(
     Reads the JSON produced by `anamne export` and re-inserts scratchpad facts
     and active working-memory notes into the current store.
 
-    Episodic decisions are NOT imported — they are repo-specific and should be
+    Episodic decisions are NOT imported  - they are repo-specific and should be
     re-indexed with `anamne index` instead.
 
     Examples:
@@ -1260,7 +1260,7 @@ def import_memory(
         raise typer.Exit(1)
 
     if not isinstance(payload, dict):
-        console.print("[red]Invalid export file — expected a JSON object.[/red]")
+        console.print("[red]Invalid export file  - expected a JSON object.[/red]")
         raise typer.Exit(1)
 
     export_version = payload.get("version", "unknown")
@@ -1296,7 +1296,7 @@ def import_memory(
                 facts_skipped += 1
                 console.print(f"  [dim]skip (duplicate):[/dim] {text[:60]}")
                 continue
-            console.print(f"  [green]+[/green] {text[:72]}{'…' if len(text) > 72 else ''}")
+            console.print(f"  [green]+[/green] {text[:72]}{'...' if len(text) > 72 else ''}")
             if not dry_run:
                 store.remember(text, tags=tags)
                 existing_texts.add(text)
@@ -1314,7 +1314,7 @@ def import_memory(
                 note = (w.get("note") or "").strip()
                 if not note:
                     continue
-                console.print(f"  [green]+[/green] {note[:72]}{'…' if len(note) > 72 else ''}")
+                console.print(f"  [green]+[/green] {note[:72]}{'...' if len(note) > 72 else ''}")
                 if not dry_run:
                     store.working_add(note, ttl_minutes=ttl)
                 working_imported += 1
@@ -1322,7 +1322,7 @@ def import_memory(
     # ---- Summary ----
     if dry_run:
         console.print(
-            f"\n[yellow]Dry run[/yellow] — nothing stored. "
+            f"\n[yellow]Dry run[/yellow]  - nothing stored. "
             f"Would import {facts_imported} fact(s), {working_imported} working note(s)."
         )
     else:
@@ -1350,8 +1350,8 @@ def capture_clipboard(
 ) -> None:
     """Read the clipboard and offer to save it as a scratchpad fact.
 
-    Useful for quickly capturing something interesting you've copied — a quote,
-    a decision, a snippet of context — without switching to another app.
+    Useful for quickly capturing something interesting you've copied  - a quote,
+    a decision, a snippet of context  - without switching to another app.
 
     With --distill, the LLM extracts multiple atomic facts from longer text.
 
@@ -1370,7 +1370,7 @@ def capture_clipboard(
     console.print(f"\n[bold]Clipboard ({len(text)} chars):[/bold]\n{preview}\n")
 
     if dry_run:
-        console.print("[yellow]Dry run — nothing stored.[/yellow]")
+        console.print("[yellow]Dry run  - nothing stored.[/yellow]")
         return
 
     if distill:
@@ -1514,7 +1514,7 @@ def search_working(
         console.print(f"[dim]No working-memory notes matching '[bold]{query}[/bold]'.[/dim]")
         return
 
-    console.print(f"\n[bold]Working memory — {len(results)} match(es) for '{query}':[/bold]\n")
+    console.print(f"\n[bold]Working memory  - {len(results)} match(es) for '{query}':[/bold]\n")
     for w in results:
         console.print(f"  [cyan]{w['id']}[/cyan]  {w['note']}")
         console.print(f"           [dim]expires: {w['expires_at']}[/dim]")
@@ -1532,10 +1532,10 @@ def clear(
     """Clear an entire memory layer (irreversible).
 
     Layers:
-      scratchpad  — all durable facts and their ACT-R retrieval history
-      working     — all active working-memory notes
-      episodic    — all indexed decisions and commit history
-      all         — everything above
+      scratchpad   - all durable facts and their ACT-R retrieval history
+      working      - all active working-memory notes
+      episodic     - all indexed decisions and commit history
+      all          - everything above
 
     Examples:
       anamne clear working               # wipe session notes
@@ -1544,7 +1544,7 @@ def clear(
     valid = {"scratchpad", "working", "episodic", "all"}
     if layer not in valid:
         console.print(
-            f"[red]Unknown layer: {layer}[/red] — choose from: {', '.join(sorted(valid))}"
+            f"[red]Unknown layer: {layer}[/red]  - choose from: {', '.join(sorted(valid))}"
         )
         raise typer.Exit(1)
 
@@ -1594,7 +1594,7 @@ def doctor() -> None:
     issues: list[str] = []
 
     console.print()
-    console.print("[bold]ANAMNE Doctor[/bold]  —  installation health check\n")
+    console.print("[bold]ANAMNE Doctor[/bold]   -  installation health check\n")
 
     # ── Version ──────────────────────────────────────────────────────────── #
     from anamne import __version__
@@ -1626,8 +1626,8 @@ def doctor() -> None:
         console.print(f"  {warn_mark}  GEMINI_API_KEY   : [yellow]not set[/yellow]")
 
     if not has_anthropic and not has_gemini:
-        issues.append("No LLM API key set — run `anamne init` or set ANTHROPIC_API_KEY / GEMINI_API_KEY in .env")
-        console.print(f"        [red]→ No API key configured. LLM commands will fail.[/red]")
+        issues.append("No LLM API key set  - run `anamne init` or set ANTHROPIC_API_KEY / GEMINI_API_KEY in .env")
+        console.print(f"        [red]No API key configured. LLM commands will fail.[/red]")
 
     # ── Data directory ────────────────────────────────────────────────────── #
     if data_dir.exists():
@@ -1663,7 +1663,7 @@ def doctor() -> None:
                 lag = facts - chroma_facts
                 console.print(
                     f"  {warn_mark}  ChromaDB scratchpad: {chroma_facts} "
-                    f"[yellow](SQLite has {facts} — {lag} not yet embedded)[/yellow]"
+                    f"[yellow](SQLite has {facts}  - {lag} not yet embedded)[/yellow]"
                 )
                 issues.append(
                     f"ChromaDB scratchpad is {lag} fact(s) behind SQLite. "
@@ -1732,7 +1732,7 @@ def status() -> None:
     table.add_row(
         "Status",
         "[green]ready[/green]" if (count + fact_count) > 0
-        else "[yellow]empty — run: anamne index . or anamne remember ...[/yellow]",
+        else "[yellow]empty  - run: anamne index . or anamne remember ...[/yellow]",
     )
     table.add_row("Indexed repos", str(len(repos)) if repos else "none")
     table.add_row("Data dir", str(cfg.data_dir))
@@ -1767,7 +1767,7 @@ def mcp_server() -> None:
 
     cfg = get_settings()
     if not (cfg.anthropic_api_key or cfg.gemini_api_key):
-        # Stderr-only — must not pollute stdout
+        # Stderr-only  - must not pollute stdout
         sys.stderr.write(
             "anamne MCP: no LLM API key configured.\n"
             "Run `anamne init` first, then restart your MCP host.\n"
@@ -1788,7 +1788,7 @@ def ui(
     port: int = typer.Option(8765, "--port", "-p", help="Local port to listen on"),
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
 ) -> None:
-    """Launch the local web dashboard — browse all memories in your browser.
+    """Launch the local web dashboard  - browse all memories in your browser.
 
     Opens http://127.0.0.1:<port> automatically (pass --no-browser to disable).
     Read-only view: scratchpad facts, search, working memory, indexed repos.

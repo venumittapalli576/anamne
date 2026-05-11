@@ -4,6 +4,16 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.6.1] — 2026-05-11
+
+### Fixed
+- **Windows cp1252 UnicodeEncodeError** — replaced all non-ASCII characters in CLI
+  output strings (em dashes `—`, ellipsis `…`, en dashes `–`, arrow `→`, and
+  banner box-drawing chars) with ASCII equivalents. All Rich `console.print()` output
+  now works on Windows legacy terminals (cp1252 / PowerShell / cmd.exe).
+
+---
+
 ## [0.6.0] — 2026-05-11
 
 ### Added — Phase 6
