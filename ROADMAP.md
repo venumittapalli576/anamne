@@ -164,12 +164,22 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 11 - Future ideas
+## What's Built (v0.11.0)
+
+| Feature | Status |
+|---|---|
+| `anamne recent` - show latest facts, newest first, with creation date | ✅ |
+| `anamne bulk-tag <tag> <id>...` - apply a tag to multiple facts in one step | ✅ |
+| `--pinned` filter on `anamne facts` and `anamne search` | ✅ |
+
+---
+
+## Phase 12 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne search --pinned`** - list only pinned facts
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
+- **`anamne recap`** - LLM summary of everything added/retrieved today
 
 ---
 

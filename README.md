@@ -142,10 +142,16 @@ anamne recall "why did we switch from MySQL?"
 # Direct scratchpad search — fast, ACT-R ranked, no API key needed
 anamne search postgres
 anamne search "python preference" --limit 5 --tag backend
+anamne search deploy --pinned       # only pinned facts
 
-# List all scratchpad facts (optionally filter by tag)
+# List all scratchpad facts (optionally filter by tag or pin status)
 anamne facts
 anamne facts --tag python --limit 10
+anamne facts --pinned               # only pinned facts
+
+# Show most recently added facts (quick journal-style review)
+anamne recent
+anamne recent --limit 20 --tag journal
 
 # Show active working memory
 anamne working
@@ -178,6 +184,9 @@ anamne tag <memory-id> --set python --set testing   # replaces all tags
 # Pin a fact - protect it from auto-consolidation forever
 anamne pin <memory-id>
 anamne unpin <memory-id>    # remove protection
+
+# Apply a tag to multiple facts at once (useful after an import batch)
+anamne bulk-tag architecture abc123 def456 ghi789
 
 # Delete a specific fact
 anamne forget <memory-id>

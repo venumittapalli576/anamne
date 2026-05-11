@@ -15,7 +15,9 @@ Scratchpad (durable facts):
   info              - show full detail + ACT-R score for one fact
   tag               - add/remove/set tags on an existing fact
   forget            - delete a specific fact
-  facts             - list all scratchpad facts (supports --tag filter)
+  facts             - list all scratchpad facts (supports --tag, --pinned)
+  recent            - most recently added facts, newest first
+  bulk-tag          - apply a tag to multiple facts at once
   journal           - timestamped journal entry
   import-chat       - extract facts from exported AI conversations
   capture-clipboard - save clipboard text as a fact
@@ -915,13 +917,25 @@ def consolidate(
 def facts(
     limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag (repeatable)"),
+    pinned_only: bool = typer.Option(False, "--pinned", help="Only show pinned facts"),
 ) -> None:
-    """List facts in scratchpad memory, optionally filtered by tag."""
+    """List facts in scratchpad memory, optionally filtered by tag or pin status.
+
+    Examples:
+      anamne facts
+      anamne facts --tag python --limit 10
+      anamne facts --pinned           # only pinned facts
+    """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
-    rows = store.list_facts(limit=limit, tags=tag or None)
+    rows = store.list_facts(limit=limit * 3 if pinned_only else limit, tags=tag or None)
+    if pinned_only:
+        rows = [f for f in rows if f.get("pinned")]
+        rows = rows[:limit]
     if not rows:
-        if tag:
+        if pinned_only:
+            console.print("[dim]No pinned facts. Use [bold]anamne pin <id>[/bold] to protect a fact.[/dim]")
+        elif tag:
             console.print(f"[dim]No facts tagged: {', '.join(tag)}[/dim]")
         else:
             console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
@@ -930,6 +944,91 @@ def facts(
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
         pin_str = "  [green][pin][/green]" if f.get("pinned") else ""
         console.print(f"[cyan]{f['id']}[/cyan]{pin_str}  {f['fact']}{tag_str}")
+
+
+@app.command()
+def recent(
+    limit: int = typer.Option(10, "--limit", "-n", help="How many to show"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag"),
+) -> None:
+    """Show the most recently added scratchpad facts (quick journal review).
+
+    Ordered by creation date, newest first. Useful for a quick review of what
+    you've captured recently without needing to search.
+
+    Examples:
+      anamne recent
+      anamne recent --limit 20
+      anamne recent --tag journal
+    """
+    import sqlite3
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    with sqlite3.connect(store._db) as con:
+        rows = con.execute(
+            "SELECT id, fact, tags, created_at, COALESCE(pinned,0) "
+            "FROM scratchpad ORDER BY created_at DESC LIMIT ?",
+            (limit * 3 if tag else limit,),
+        ).fetchall()
+
+    import json as _json
+    results = [
+        {
+            "id": r[0], "fact": r[1], "tags": _json.loads(r[2]),
+            "created_at": r[3], "pinned": bool(r[4]),
+        }
+        for r in rows
+    ]
+    if tag:
+        tag_set = set(tag)
+        results = [f for f in results if tag_set.intersection(f["tags"])]
+    results = results[:limit]
+
+    if not results:
+        console.print("[dim]No facts found.[/dim]")
+        return
+
+    console.print(f"\n[bold]Recent facts[/bold]  ({len(results)} shown):\n")
+    for f in results:
+        tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f["tags"] else ""
+        pin_str = "  [green][pin][/green]" if f.get("pinned") else ""
+        date_str = f"[dim]{f['created_at'][:10]}[/dim]  " if f.get("created_at") else ""
+        console.print(f"  {date_str}[cyan]{f['id']}[/cyan]{pin_str}  {f['fact']}{tag_str}")
+    console.print()
+
+
+@app.command(name="bulk-tag")
+def bulk_tag(
+    tag: str = typer.Argument(..., help="Tag to apply"),
+    ids: list[str] = typer.Argument(..., help="One or more fact IDs to tag"),
+) -> None:
+    """Apply a tag to multiple facts at once.
+
+    Useful after an import batch: grab all the new IDs and tag them in one step.
+    The tag is added to existing tags (not replacing them).
+
+    Examples:
+      anamne bulk-tag architecture abc123 def456 ghi789
+      anamne bulk-tag web-import $(anamne facts --tag web-import -n 100 | awk '{print $1}')
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    ok_count = 0
+    fail_count = 0
+    for fid in ids:
+        result = store.update_fact_tags(fid, add=[tag])
+        if result is not None:
+            ok_count += 1
+        else:
+            console.print(f"  [yellow]Not found:[/yellow] {fid}")
+            fail_count += 1
+
+    if ok_count:
+        console.print(f"  [green]Tagged {ok_count} fact(s)[/green] with '[cyan]{tag}[/cyan]'")
+    if fail_count:
+        console.print(f"  [yellow]{fail_count} ID(s) not found[/yellow]")
 
 
 @app.command()
@@ -1379,6 +1478,7 @@ def search(
     query: str = typer.Argument(..., help="Search term"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag (repeatable)"),
+    pinned_only: bool = typer.Option(False, "--pinned", help="Only show pinned facts"),
     no_rank: bool = typer.Option(
         False, "--no-rank", help="Skip ACT-R ranking, use raw recency order"
     ),
@@ -1393,19 +1493,23 @@ def search(
       anamne search postgres
       anamne search "python preference" --limit 5
       anamne search auth --tag security
+      anamne search deploy --pinned    # only pinned facts matching "deploy"
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     if no_rank:
-        results = store.search_facts(query, limit=limit, tags=tag or None)
+        results = store.search_facts(query, limit=limit * 3, tags=tag or None)
     else:
         # Get ranked results then apply tag filter
-        results = store.search_facts_ranked(query, limit=limit * 2)
+        results = store.search_facts_ranked(query, limit=limit * 3)
         if tag:
             tag_set = set(tag)
             results = [f for f in results if tag_set.intersection(f.get("tags", []))]
-        results = results[:limit]
+
+    if pinned_only:
+        results = [f for f in results if f.get("pinned")]
+    results = results[:limit]
 
     if not results:
         console.print(f"[dim]No scratchpad facts matching '[bold]{query}[/bold]'.[/dim]")

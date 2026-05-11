@@ -4,6 +4,29 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.11.0] — 2026-05-11
+
+### Added - Phase 11
+
+**`anamne recent`** - quick review of the latest additions
+- `anamne recent` - show 10 most recently *created* scratchpad facts
+- `anamne recent --limit 20 --tag journal` - filter by tag
+- Shows creation date prefix, pin indicator, tags inline
+
+**`anamne bulk-tag <tag> <id> [<id>...]`** - batch-apply a tag
+- `anamne bulk-tag architecture abc123 def456 ghi789`
+- Adds the tag to each fact's existing tags (non-destructive)
+- Reports how many were found / not found
+
+**`--pinned` flag on `facts` and `search`**
+- `anamne facts --pinned` - list only pinned facts
+- `anamne search "deploy" --pinned` - search only within pinned facts
+
+### Tests
+- 72 tests, all passing
+
+---
+
 ## [0.10.0] — 2026-05-11
 
 ### Added - Phase 10
