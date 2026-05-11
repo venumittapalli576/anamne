@@ -435,13 +435,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 36 - Future ideas
+## What's Built (v0.36.0)
+
+| Feature | Status |
+|---|---|
+| `anamne mcp-config --apply` - writes directly to client config | ✅ |
+| `--config-path` override for non-standard locations | ✅ |
+| `anamne sync-cloud --repo <dir>` - git-backed personal mirror | ✅ |
+| `--no-push` for offline-only commits, idempotent re-runs | ✅ |
+
+---
+
+## Phase 37 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **`anamne notebook --runnable`** - notebook cells use `import anamne` API
-- **`anamne mcp-config --apply`** - write directly to client config file
-- **`anamne sync-cloud`** - one-way push to a personal git-backed mirror
+- **`anamne sync-cloud --schedule`** - cron-style auto-sync
+- **`anamne sync-cloud --pull`** - one-way pull from git mirror to overwrite local
 
 ---
 

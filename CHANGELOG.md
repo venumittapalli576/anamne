@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.36.0] — 2026-05-11
+
+### Added - Phase 36
+
+**`anamne mcp-config --apply`** - write the snippet directly to the client
+- Auto-detects `~/.claude.json` (Linux/macOS) or `%APPDATA%\Claude\...` (Windows)
+- Merges into `mcpServers`, preserves any other entries
+- `--config-path` to override the location
+- Cursor still prints-only (Cursor uses an in-app dialog, not a JSON file)
+
+**`anamne sync-cloud --repo <git-repo>`** - personal git-backed mirror
+- Writes `anamne-export.json` to the given local git repo
+- Stages, commits (`anamne sync ...` message default), and pushes
+- `--no-push` for offline-only commits
+- Idempotent: skips the commit when there are no changes
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.35.0] — 2026-05-11
 
 ### Added - Phase 35

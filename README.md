@@ -367,6 +367,10 @@ anamne backup --keep 7              # daily cron: retain last week of backups
 anamne notebook today.ipynb
 anamne notebook py.ipynb --tag python --limit 100
 
+# One-way push of a JSON backup into a personal git mirror
+anamne sync-cloud --repo ~/anamne-mirror
+anamne sync-cloud --repo ~/anamne-mirror --no-push
+
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
 anamne fact-of-the-day --post-to https://hooks.slack.com/services/...
@@ -449,6 +453,7 @@ anamne tools --schema remember        # full JSON schema for one tool
 anamne mcp-config                     # Claude Code style (default)
 anamne mcp-config --client cursor
 anamne mcp-config --client cline
+anamne mcp-config --apply             # merge into ~/.claude.json directly
 ```
 
 ---

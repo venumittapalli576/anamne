@@ -3795,22 +3795,142 @@ def tag_stats(
         console.print()
 
 
+def _detect_claude_config_path() -> Optional[Path]:
+    """Best-effort detection of the Claude Code config file path."""
+    import os
+    import platform
+    candidates: list[Path] = []
+    home = Path.home()
+    if platform.system() == "Windows":
+        appdata = Path(os.environ.get("APPDATA") or (home / "AppData/Roaming"))
+        candidates.append(appdata / "Claude" / "claude_desktop_config.json")
+    else:
+        # macOS + Linux: Claude Code uses ~/.claude.json or the desktop path
+        candidates.append(home / ".claude.json")
+        candidates.append(home / "Library/Application Support/Claude/claude_desktop_config.json")
+    for c in candidates:
+        if c.exists():
+            return c
+    # Fall back to the first candidate even if it doesn't exist yet
+    return candidates[0] if candidates else None
+
+
+@app.command(name="sync-cloud")
+def sync_cloud(
+    repo_dir: Path = typer.Option(
+        ..., "--repo", "-r",
+        help="Path to a local git repo that backs your personal cloud mirror"
+    ),
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m",
+        help="Commit message (default: 'anamne sync YYYY-MM-DD')"
+    ),
+    push: bool = typer.Option(
+        True, "--push/--no-push",
+        help="Run `git push` after committing (default: yes)"
+    ),
+) -> None:
+    """One-way push of a JSON backup into a personal git-backed mirror.
+
+    Writes `anamne-export.json` inside the given local git repo, stages it,
+    commits, and (by default) pushes. Designed for users who run a private
+    GitHub/Gitea/Forgejo repo as their personal cloud sync target.
+
+    The export is exactly what `anamne backup` produces; restore via
+    `anamne import-memory <file>` on the other machine.
+
+    Examples:
+      anamne sync-cloud --repo ~/anamne-mirror
+      anamne sync-cloud --repo ~/anamne-mirror -m "morning sync"
+      anamne sync-cloud --repo ~/anamne-mirror --no-push
+    """
+    import subprocess
+    from datetime import datetime
+    from anamne.store.graph import DecisionStore
+    from anamne import __version__
+
+    if not repo_dir.exists():
+        console.print(f"[red]Repo directory does not exist: {repo_dir}[/red]")
+        raise typer.Exit(code=1)
+    if not (repo_dir / ".git").exists():
+        console.print(f"[red]{repo_dir} is not a git repo (missing .git/).[/red]")
+        raise typer.Exit(code=1)
+
+    store = DecisionStore()
+    payload = {
+        "exported_at": datetime.now().isoformat(),
+        "version": __version__,
+        "scratchpad_facts": store.list_facts(limit=100_000),
+        "working_memory": store.working_active(),
+        "episodic_decisions": [
+            d.to_dict() for d in store.list_all_decisions(limit=100_000)
+        ],
+    }
+    target = repo_dir / "anamne-export.json"
+    target.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    console.print(f"  [dim]Wrote[/dim] {target}")
+
+    msg = message or f"anamne sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    try:
+        subprocess.run(["git", "-C", str(repo_dir), "add", "anamne-export.json"],
+                       check=True, capture_output=True, text=True)
+        # Skip the commit if there's nothing to add (idempotent sync)
+        status = subprocess.run(
+            ["git", "-C", str(repo_dir), "status", "--porcelain"],
+            check=True, capture_output=True, text=True,
+        )
+        if not status.stdout.strip():
+            console.print("\n  [dim]No changes - already in sync.[/dim]\n")
+            return
+        subprocess.run(["git", "-C", str(repo_dir), "commit", "-m", msg],
+                       check=True, capture_output=True, text=True)
+        console.print(f"  [green]Committed[/green]  {msg}")
+        if push:
+            result = subprocess.run(
+                ["git", "-C", str(repo_dir), "push"],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                console.print(
+                    f"  [yellow]Push warning:[/yellow] "
+                    f"{(result.stderr or result.stdout)[:200]}"
+                )
+            else:
+                console.print("  [green]Pushed[/green]")
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or e.stdout or str(e))[:300]
+        console.print(f"  [red]git error:[/red] {err}")
+        raise typer.Exit(code=1)
+    console.print()
+
+
 @app.command(name="mcp-config")
 def mcp_config(
     client: str = typer.Option(
         "claude", "--client", "-c",
         help="Client: claude | cursor | cline"
     ),
+    apply: bool = typer.Option(
+        False, "--apply",
+        help="Merge the snippet into the detected client config file"
+    ),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config-path",
+        help="Override the auto-detected config file location"
+    ),
 ) -> None:
-    """Print a pre-filled MCP config snippet you can paste into a client.
+    """Print or apply a pre-filled MCP config snippet for an AI client.
 
     Detects the absolute path to the local `anamne` executable so you can drop
-    the snippet directly into the client's config file.
+    the snippet directly into the client's config file. With `--apply`, the
+    Claude / Cline config file is updated in place (the `anamne` MCP server
+    entry is merged into `mcpServers`).
 
     Examples:
-      anamne mcp-config                  # Claude Code style
+      anamne mcp-config                       # print Claude Code snippet
       anamne mcp-config --client cursor
-      anamne mcp-config --client cline
+      anamne mcp-config --apply               # merge into ~/.claude.json
+      anamne mcp-config --client cline --apply
     """
     import shutil
 
@@ -3844,9 +3964,49 @@ def mcp_config(
                       "Use claude | cursor | cline.")
         raise typer.Exit(code=1)
 
-    console.print(f"\n  [dim]Paste into:[/dim] {target}\n")
-    console.print(json.dumps(snippet, indent=2))
-    console.print()
+    if not apply:
+        console.print(f"\n  [dim]Paste into:[/dim] {target}\n")
+        console.print(json.dumps(snippet, indent=2))
+        console.print()
+        return
+
+    # --- Apply mode ---
+    if client == "cursor":
+        console.print(
+            "\n  [yellow]--apply not supported for Cursor.[/yellow]  "
+            "Open Settings > MCP and paste the snippet manually:\n"
+        )
+        console.print(json.dumps(snippet, indent=2))
+        console.print()
+        return
+
+    cfg_path = config_path or _detect_claude_config_path()
+    if cfg_path is None:
+        console.print("[red]Could not detect a config path. Pass --config-path.[/red]")
+        raise typer.Exit(code=1)
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict = {}
+    if cfg_path.exists():
+        try:
+            raw = cfg_path.read_text(encoding="utf-8")
+            existing = json.loads(raw) if raw.strip() else {}
+        except Exception as e:
+            console.print(
+                f"  [yellow]Existing config is not valid JSON ({e}); "
+                "refusing to overwrite.[/yellow]"
+            )
+            raise typer.Exit(code=1)
+
+    servers = existing.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        console.print("[red]Existing mcpServers entry is not an object.[/red]")
+        raise typer.Exit(code=1)
+    servers["anamne"] = {"command": cmd_path, "args": ["mcp-server"]}
+    cfg_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    console.print(
+        f"\n  [green]Wrote MCP entry for '[cyan]{client}[/cyan]'[/green]\n"
+        f"  [dim]config:[/dim] {cfg_path}\n"
+    )
 
 
 @app.command()
