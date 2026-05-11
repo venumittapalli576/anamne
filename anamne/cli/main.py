@@ -2113,8 +2113,16 @@ def export(
         None, "--since", metavar="YYYY-MM-DD",
         help="Only export items created on/after this date (incremental backup)"
     ),
+    signed: bool = typer.Option(
+        False, "--signed",
+        help="Append an HMAC-SHA256 signature derived from $ANAMNE_SIGN_KEY"
+    ),
 ) -> None:
     """Export all memories to JSON or Markdown for backup or migration.
+
+    With `--signed`, an HMAC-SHA256 of the JSON payload is computed using the
+    secret in the `ANAMNE_SIGN_KEY` env var and appended as a top-level
+    `_signature` field. Use `anamne import-memory --verify` on the other side.
 
     Examples:
       anamne export --output backup.json
@@ -2122,6 +2130,7 @@ def export(
       anamne export --no-episodic --output facts-only.json
       anamne export --tag python --output python-facts.json
       anamne export --since 2026-05-01 --output delta.json
+      ANAMNE_SIGN_KEY=hunter2 anamne export --signed --output bundle.json
     """
     import json as _json
     from datetime import date
@@ -2206,6 +2215,24 @@ def export(
                 ]
             payload["episodic_decisions"] = [d.to_dict() for d in decisions]
 
+        if signed:
+            import hashlib
+            import hmac
+            import os as _os
+
+            key = _os.environ.get("ANAMNE_SIGN_KEY")
+            if not key:
+                console.print(
+                    "[red]--signed requires ANAMNE_SIGN_KEY in the environment.[/red]"
+                )
+                raise typer.Exit(code=1)
+            # Sign the canonical-serialized body BEFORE adding the signature
+            body = _json.dumps(payload, sort_keys=True, default=str)
+            sig = hmac.new(
+                key.encode("utf-8"), body.encode("utf-8"), hashlib.sha256
+            ).hexdigest()
+            payload["_signature"] = {"algo": "HMAC-SHA256", "value": sig}
+
         content = _json.dumps(payload, indent=2, default=str)
 
     if output:
@@ -2228,6 +2255,11 @@ def import_memory(
     ttl: int = typer.Option(
         60, "--ttl", help="TTL in minutes for imported working-memory notes"
     ),
+    verify: bool = typer.Option(
+        False, "--verify",
+        help="Refuse to import unless the file has a valid HMAC signature "
+             "matching $ANAMNE_SIGN_KEY"
+    ),
 ) -> None:
     """Import facts from another ANAMNE JSON export (backup restore / team sharing).
 
@@ -2237,10 +2269,15 @@ def import_memory(
     Episodic decisions are NOT imported  - they are repo-specific and should be
     re-indexed with `anamne index` instead.
 
+    With `--verify`, the file must contain a `_signature` block produced by
+    `anamne export --signed` AND the local `ANAMNE_SIGN_KEY` must reproduce the
+    HMAC. Import aborts if either is missing or the signature doesn't match.
+
     Examples:
       anamne import-memory backup.json
       anamne import-memory team-facts.json --dry-run
       anamne import-memory old-machine.json --no-working --allow-dupes
+      ANAMNE_SIGN_KEY=hunter2 anamne import-memory bundle.json --verify
     """
     import json as _json
 
@@ -2258,6 +2295,34 @@ def import_memory(
     if not isinstance(payload, dict):
         console.print("[red]Invalid export file  - expected a JSON object.[/red]")
         raise typer.Exit(1)
+
+    if verify:
+        import hashlib
+        import hmac
+        import os as _os
+
+        sig_block = payload.get("_signature")
+        if not isinstance(sig_block, dict) or "value" not in sig_block:
+            console.print(
+                "[red]--verify requested but the file has no _signature.[/red]"
+            )
+            raise typer.Exit(code=1)
+        key = _os.environ.get("ANAMNE_SIGN_KEY")
+        if not key:
+            console.print(
+                "[red]--verify requires ANAMNE_SIGN_KEY in the environment.[/red]"
+            )
+            raise typer.Exit(code=1)
+        # Recompute over the body WITHOUT the signature
+        body_only = {k: v for k, v in payload.items() if k != "_signature"}
+        body_str = _json.dumps(body_only, sort_keys=True, default=str)
+        expected = hmac.new(
+            key.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, sig_block.get("value") or ""):
+            console.print("[red]Signature mismatch - refusing to import.[/red]")
+            raise typer.Exit(code=1)
+        console.print("  [green]Signature verified.[/green]")
 
     export_version = payload.get("version", "unknown")
     exported_at = payload.get("exported_at", "unknown")

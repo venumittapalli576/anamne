@@ -4,6 +4,28 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.38.0] — 2026-05-11
+
+### Added - Phase 38
+
+**`anamne export --signed`** - HMAC-signed export bundles
+- Appends a `_signature` block (`{algo: HMAC-SHA256, value: ...}`)
+- Signing key read from the `ANAMNE_SIGN_KEY` environment variable
+- Signature is computed over the canonical JSON sorted-keys representation
+  of the payload WITHOUT the signature itself
+
+**`anamne import-memory --verify`** - signature verification on import
+- Recomputes the HMAC using `ANAMNE_SIGN_KEY` and refuses to import on
+  mismatch (or when no signature is present)
+- Uses `hmac.compare_digest` for constant-time comparison
+- Pairs naturally with team-shared bundles where you want to confirm the
+  file came from a known sender
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.37.0] — 2026-05-11
 
 ### Added - Phase 37

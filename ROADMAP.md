@@ -456,13 +456,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 38 - Future ideas
+## What's Built (v0.38.0)
+
+| Feature | Status |
+|---|---|
+| `anamne export --signed` - HMAC-SHA256 signed export bundles | ✅ |
+| `anamne import-memory --verify` - reject unsigned / mismatching bundles | ✅ |
+| `ANAMNE_SIGN_KEY` env var convention for both sides | ✅ |
+
+---
+
+## Phase 39 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **Multi-user sharing** - export/import signed bundles with provenance
+- **Multi-user sharing** - signed bundles + sender metadata
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne export --signed`** - signed export bundles for trust
-- **`anamne import-memory --signed`** - verify and import signed bundles
+- **`anamne export --encrypt`** - AES-encrypted bundles (not just signed)
+- **`anamne key-rotate`** - rotate signing key + re-sign existing backups
 
 ---
 
