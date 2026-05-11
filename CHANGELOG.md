@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.25.0] — 2026-05-11
+
+### Added - Phase 25
+
+**`anamne backup --keep N`** - backup rotation
+- After writing the new backup, prunes older `anamne-backup-*.json` files
+- Keeps only the N newest in the target directory
+- `--keep 0` (default) preserves the old behavior of unlimited retention
+- Makes daily-cron usage trivially safe
+
+**`anamne merge <keep_id> <drop_id>`** - manual fact merge
+- Targeted user-driven merge (no clustering, no consolidate dependency)
+- Tags are unioned onto the keeper; donor fact is deleted with a `merged_into`
+  history breadcrumb pointing back to the keeper
+- `--llm` asks the model to write a concise merged sentence; default is
+  simple concatenation with `. ` separator
+- Faster path than running full `consolidate` when you've already spotted
+  the duplicate with `anamne related` or `anamne diff`
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.24.0] — 2026-05-11
 
 ### Added - Phase 24

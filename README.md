@@ -239,6 +239,10 @@ anamne related <memory-id> --tag python   # tag-filtered neighbors
 # Compare two facts side-by-side (text, tags, ACT-R, pinned status)
 anamne diff <id1> <id2>
 
+# Manually merge two facts into one (keeps keep_id, deletes drop_id)
+anamne merge <keep_id> <drop_id>
+anamne merge <keep_id> <drop_id> --llm   # LLM-rewritten merged sentence
+
 # Rename a tag across every fact (e.g. fix typos)
 anamne tag-rename pyhton python
 
@@ -338,6 +342,7 @@ anamne import-memory old-machine.json --no-working      # skip working memory
 # One-shot timestamped backup to ~/.anamne/backups/
 anamne backup
 anamne backup --dir ./my-backups
+anamne backup --keep 7              # daily cron: retain last week of backups
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day

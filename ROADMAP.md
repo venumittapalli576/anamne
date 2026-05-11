@@ -320,14 +320,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 25 - Future ideas
+## What's Built (v0.25.0)
+
+| Feature | Status |
+|---|---|
+| `anamne backup --keep N` - keep only N newest backup files | ✅ |
+| `anamne merge <keep_id> <drop_id>` - manual targeted fact merge | ✅ |
+| `anamne merge --llm` - LLM-rewritten merged sentence | ✅ |
+
+---
+
+## Phase 26 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne backup --schedule`** - cron-style auto-backup
 - **`anamne fact-of-the-day --post-to <url>`** - webhook integration
+- **`anamne merge --dry-run`** - preview merged result without applying
 
 ---
 

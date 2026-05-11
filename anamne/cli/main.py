@@ -3740,6 +3740,10 @@ def backup(
     output_dir: Optional[Path] = typer.Option(
         None, "--dir", "-d", help="Backup directory (default ~/.anamne/backups)"
     ),
+    keep: int = typer.Option(
+        0, "--keep", "-k",
+        help="Keep only the N newest backups; older files are deleted (0 = no rotation)"
+    ),
 ) -> None:
     """One-shot timestamped JSON backup of every memory layer.
 
@@ -3747,9 +3751,13 @@ def backup(
     The backup is the same shape as `anamne export --output ...` so it can be
     restored with `anamne import-memory`.
 
+    With `--keep N`, older backups in the same directory are removed after the
+    new one is written. Useful in a cron loop.
+
     Examples:
       anamne backup
       anamne backup --dir ./my-backups
+      anamne backup --keep 7              # daily backup, retain one week
     """
     from datetime import datetime
     from anamne.store.graph import DecisionStore
@@ -3774,7 +3782,100 @@ def backup(
     size_kb = target.stat().st_size / 1024
     console.print(
         f"\n  [green]Backup written[/green]  [bold]{target}[/bold]  "
-        f"[dim]({size_kb:.1f} KB)[/dim]\n"
+        f"[dim]({size_kb:.1f} KB)[/dim]"
+    )
+
+    if keep and keep > 0:
+        existing = sorted(
+            target_dir.glob("anamne-backup-*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        to_remove = existing[keep:]
+        for p in to_remove:
+            try:
+                p.unlink()
+            except Exception:
+                pass
+        if to_remove:
+            console.print(
+                f"  [dim]Rotated[/dim] {len(to_remove)} older backup(s); "
+                f"keeping the newest {keep}."
+            )
+    console.print()
+
+
+@app.command()
+def merge(
+    keep_id: str = typer.Argument(..., help="Fact ID to keep (will hold merged content)"),
+    drop_id: str = typer.Argument(..., help="Fact ID to delete (its content is merged in)"),
+    use_llm: bool = typer.Option(
+        False, "--llm",
+        help="Use the LLM to write a merged sentence (default: concatenate with '. ')"
+    ),
+) -> None:
+    """Manually merge two scratchpad facts into one.
+
+    Workflow:
+      1. The two fact texts are combined (either via LLM rewrite or simple
+         concatenation).
+      2. Tags from both facts are unioned and applied to `keep_id`.
+      3. `drop_id` is deleted; a `merged_into` history entry points to `keep_id`.
+
+    Unlike `anamne consolidate`, this is a targeted user-driven merge - no
+    clustering, no auto-detection.
+
+    Examples:
+      anamne merge abc123 def456
+      anamne merge abc123 def456 --llm
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    a = store.get_fact(keep_id)
+    b = store.get_fact(drop_id)
+    if a is None or b is None:
+        missing = keep_id if a is None else drop_id
+        console.print(f"[red]No fact found with id '{missing}'.[/red]")
+        raise typer.Exit(code=1)
+    if keep_id == drop_id:
+        console.print("[yellow]keep_id and drop_id must be different.[/yellow]")
+        raise typer.Exit(code=1)
+
+    merged_text: str
+    if use_llm:
+        try:
+            from anamne.llm import LLMClient
+            client = LLMClient()
+            prompt = (
+                "Merge the following two related facts into a single concise "
+                "sentence preserving every distinct claim. Reply with ONLY the "
+                "merged sentence, no quotes, no prose.\n\n"
+                f"A: {a['fact']}\nB: {b['fact']}\nMERGED:"
+            )
+            merged_text = client.complete(prompt, max_tokens=160).text.strip()
+            if not merged_text:
+                merged_text = f"{a['fact']}. {b['fact']}"
+        except Exception as e:
+            console.print(f"  [yellow]LLM unavailable ({e}); falling back to "
+                          "concatenation.[/yellow]")
+            merged_text = f"{a['fact']}. {b['fact']}"
+    else:
+        merged_text = f"{a['fact']}. {b['fact']}"
+
+    merged_tags = sorted(set((a.get("tags") or []) + (b.get("tags") or [])))
+
+    # Update content + tags on the keeper
+    store.update_fact_content(keep_id, merged_text)
+    store.update_fact_tags(keep_id, set_tags=merged_tags)
+    # Delete the donor, leaving a merged_into history breadcrumb
+    store.forget_fact(drop_id, _merged_into=keep_id)
+
+    console.print(
+        f"\n  [green]Merged[/green]\n"
+        f"  [dim]kept:[/dim]   [cyan]{keep_id}[/cyan]  {merged_text[:80]}\n"
+        f"  [dim]tags:[/dim]   {', '.join(merged_tags) or '-'}\n"
+        f"  [dim]dropped:[/dim] [cyan]{drop_id}[/cyan] (history -> {keep_id})\n"
     )
 
 
