@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.40.0] — 2026-05-11
+
+### Added - Phase 40
+
+**`anamne audit-log`** - tamper-evident audit log
+- Walks `fact_history` in chronological order
+- Computes a rolling SHA-256 hash chain (each row's hash includes the previous
+  hash + the event content)
+- `--check` prints just the chain length + head hash for periodic comparison
+- `--output <file>` writes the full JSONL chain (each line = one entry)
+- `--limit N` caps the displayed view (most recent first)
+
+**Composable `export --encrypt --signed`** - already worked, now documented
+- Sign is computed before encryption, so the envelope-decrypt path naturally
+  yields a payload whose `_signature` is verifiable
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.39.0] — 2026-05-11
 
 ### Added - Phase 39

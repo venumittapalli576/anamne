@@ -477,12 +477,22 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 40 - Future ideas
+## What's Built (v0.40.0)
+
+| Feature | Status |
+|---|---|
+| `anamne audit-log` - SHA-256 hash chain over fact_history | ✅ |
+| `--check`, `--output`, `--limit` modes | ✅ |
+| `anamne export --encrypt --signed` composable encrypt+sign | ✅ |
+
+---
+
+## Phase 41 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne audit-log`** - dump every memory mutation to a tamper-evident log
-- **`anamne export --encrypt --sign`** - combine both at once
+- **`anamne audit-log --remote-anchor`** - publish head hash to a public URL
+- **`anamne audit-log --verify <head>`** - compare current head against a stored anchor
 - **`anamne sync-cloud --pull --encrypt`** - encrypted git mirror by default
 
 ---

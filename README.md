@@ -411,6 +411,11 @@ anamne snapshot --html --output today.html       # styled HTML variant
 ```bash
 # Run a full health check — API keys, SQLite, ChromaDB, model config
 anamne doctor
+
+# Tamper-evident audit log of every memory mutation (SHA-256 hash chain)
+anamne audit-log
+anamne audit-log --check                 # head-hash check for periodic snapshot
+anamne audit-log --output audit.jsonl    # full chain to a file
 ```
 
 ### Interactive shell
