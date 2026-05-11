@@ -24,6 +24,7 @@ Thumbs.db
 
 # Generated artifacts
 ANAMNE_*.docx
+PROVENANCE_*.docx
 scripts/node_modules/
 scripts/package-lock.json
 scripts/package.json

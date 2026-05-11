@@ -1,0 +1,20 @@
+# Consistent line endings across all platforms
+* text=auto
+
+# Source files always LF
+*.py   text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.txt  text eol=lf
+*.json text eol=lf
+*.sh   text eol=lf
+
+# Binary files — never touch line endings
+*.db    binary
+*.sqlite binary
+*.png   binary
+*.jpg   binary
+*.docx  binary
+*.pdf   binary
