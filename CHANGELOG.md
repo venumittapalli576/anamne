@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.19.0] — 2026-05-11
+
+### Added - Phase 19
+
+**`anamne stats --json`** - machine-readable analytics
+- Same data as the pretty table view, emitted as JSON
+- Includes top-retrieved facts, creation-per-day, top tags
+- Pipe-friendly: `anamne stats --json | jq .top_tags`
+
+**`anamne similar --tag X`** - tag-filtered pure-semantic search
+- Pure embedding neighbors of free text, restricted to a tag
+- Composes naturally with `--limit`
+
+**`anamne suggest-tags <text>`** - preview LLM tag suggestions
+- Pulls existing tags from your store so suggestions reuse them when fitting
+- Up to N suggestions with `--max` (default 5)
+- Prints the suggested `anamne remember "..." --tag X --tag Y` command for copy-paste
+- Does NOT store anything - safe preview tool
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.18.0] — 2026-05-11
 
 ### Added - Phase 18

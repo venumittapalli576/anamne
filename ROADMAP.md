@@ -257,13 +257,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 19 - Future ideas
+## What's Built (v0.19.0)
+
+| Feature | Status |
+|---|---|
+| `anamne stats --json` - machine-readable analytics dump | ✅ |
+| `anamne similar --tag X` - tag-filtered pure-semantic search | ✅ |
+| `anamne suggest-tags <text>` - LLM tag preview without storing | ✅ |
+
+---
+
+## Phase 20 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne stats --json`** - machine-readable analytics
+- **`anamne search --json`** - machine-readable search output
 
 ---
 

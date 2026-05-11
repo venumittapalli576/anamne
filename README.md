@@ -153,6 +153,10 @@ anamne search deploy --pinned       # only pinned facts
 # Pure-semantic search (embeddings only, no substring match)
 anamne similar "why we picked our database"
 anamne similar "deployment philosophy" --limit 5
+anamne similar "design choices" --tag architecture
+
+# Preview LLM tag suggestions without storing anything
+anamne suggest-tags "Switched from MySQL to Postgres for concurrency"
 
 # List all scratchpad facts (optionally filter by tag or pin status)
 anamne facts
@@ -286,6 +290,7 @@ anamne status
 
 # Detailed analytics: most-accessed facts, creation histogram, ACT-R summary, tag breakdown
 anamne stats
+anamne stats --json                  # machine-readable analytics for scripts
 
 # Tag distribution + co-occurrence analysis
 anamne tag-stats

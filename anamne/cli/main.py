@@ -2706,6 +2706,7 @@ def suggest_pins(
 def similar(
     text: str = typer.Argument(..., help="Free-text query"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter results by tag"),
 ) -> None:
     """Pure-semantic search over scratchpad facts (no substring, no ACT-R rerank).
 
@@ -2718,11 +2719,17 @@ def similar(
     Examples:
       anamne similar "why we picked our database"
       anamne similar "deployment philosophy" --limit 5
+      anamne similar "design choices" --tag architecture
     """
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
-    results = store.search_facts_semantic(text, limit=limit)
+    fetch_limit = limit * 3 if tag else limit
+    results = store.search_facts_semantic(text, limit=fetch_limit)
+    if tag:
+        tag_set = set(tag)
+        results = [r for r in results if tag_set.intersection(r.get("tags", []))]
+    results = results[:limit]
     if not results:
         console.print(f"\n  [dim]No semantically similar facts found for "
                       f"'[cyan]{text}[/cyan]'.[/dim]\n")
@@ -2733,6 +2740,59 @@ def similar(
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f.get("tags") else ""
         console.print(f"  [cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
     console.print()
+
+
+@app.command(name="suggest-tags")
+def suggest_tags_cmd(
+    text: str = typer.Argument(..., help="Free-text content to suggest tags for"),
+    max_tags: int = typer.Option(5, "--max", "-n", help="Max tag suggestions"),
+) -> None:
+    """Preview LLM-suggested tags for arbitrary text without storing anything.
+
+    Useful to check what `remember --auto-tag` would pick, or to brainstorm
+    tag candidates for an upcoming batch import.
+
+    Examples:
+      anamne suggest-tags "Switched from MySQL to Postgres for concurrency"
+      anamne suggest-tags "Stripe webhook idempotency key was wrong" --max 3
+    """
+    from anamne.store.graph import DecisionStore
+    from anamne.llm import LLMClient
+
+    store = DecisionStore()
+    existing_tags = sorted({
+        t for f in store.list_facts(limit=10_000) for t in (f.get("tags") or [])
+    })
+    existing_blurb = (
+        f"Existing tags in this user's memory: {', '.join(existing_tags[:60])}.\n\n"
+        if existing_tags else ""
+    )
+
+    try:
+        client = LLMClient()
+        prompt = (
+            "Suggest up to "
+            f"{max_tags} short tag labels (lowercase, hyphen-separated, no spaces) "
+            "for the following user fact. Prefer reusing existing tags when they "
+            "fit; introduce new ones only when needed.\n\n"
+            f"{existing_blurb}"
+            f"FACT:\n{text}\n\n"
+            "Return ONLY a comma-separated tag list, no prose."
+        )
+        raw = client.complete(prompt, max_tokens=120).text.strip()
+        tags = [t.strip().strip(",.;:") for t in raw.replace("\n", ",").split(",")]
+        tags = [t for t in tags if t and " " not in t][:max_tags]
+    except Exception as e:
+        console.print(f"\n  [yellow]LLM unavailable ({e}).[/yellow]\n")
+        raise typer.Exit(code=1)
+
+    if not tags:
+        console.print("\n  [dim]No tags suggested.[/dim]\n")
+        return
+    console.print(f"\n  [bold]Suggested tags:[/bold]  {', '.join(tags)}\n")
+    console.print("  [dim]Use them with:[/dim]")
+    flags = " ".join(f"--tag {t}" for t in tags)
+    console.print(f"  anamne remember \"{text[:60]}...\" {flags}\n")
 
 
 @app.command()
@@ -3155,7 +3215,11 @@ def status() -> None:
 
 
 @app.command()
-def stats() -> None:
+def stats(
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit machine-readable JSON instead of pretty tables"
+    ),
+) -> None:
     """Detailed memory statistics - most accessed facts, creation rate, ACT-R summary.
 
     Complements `anamne status` with deeper analytics:
@@ -3166,6 +3230,7 @@ def stats() -> None:
 
     Examples:
       anamne stats
+      anamne stats --json     # for scripts / dashboards
     """
     import math
     import sqlite3
@@ -3179,6 +3244,46 @@ def stats() -> None:
     fact_count = store.fact_count()
     decision_count = store.count()
     working_count = len(store.working_active())
+
+    if as_json:
+        # Compact analytics payload, skipping the expensive ACT-R loop
+        # over very large stores. Pretty output below still does it.
+        with sqlite3.connect(db) as con:
+            top_retrieved_rows = con.execute("""
+                SELECT r.fact_id, COUNT(*) as hits, s.fact
+                FROM retrieval_log r
+                LEFT JOIN scratchpad s ON s.id = r.fact_id
+                GROUP BY r.fact_id
+                ORDER BY hits DESC
+                LIMIT 5
+            """).fetchall()
+            total_retr = con.execute(
+                "SELECT COUNT(*) FROM retrieval_log"
+            ).fetchone()[0]
+            creation_rows = con.execute("""
+                SELECT DATE(created_at) as day, COUNT(*) as cnt
+                FROM scratchpad
+                WHERE created_at >= DATE('now', '-14 days')
+                GROUP BY day ORDER BY day ASC
+            """).fetchall()
+        tag_counter: Counter = Counter()
+        for f in store.list_facts(limit=10_000):
+            for t in (f.get("tags") or []):
+                tag_counter[t] += 1
+        payload = {
+            "scratchpad_facts": fact_count,
+            "episodic_decisions": decision_count,
+            "working_active": working_count,
+            "total_retrievals": total_retr,
+            "top_retrieved": [
+                {"id": fid, "hits": hits, "fact": (fact_text or "")[:80]}
+                for (fid, hits, fact_text) in top_retrieved_rows
+            ],
+            "creation_per_day": {day: cnt for day, cnt in creation_rows},
+            "top_tags": dict(tag_counter.most_common(15)),
+        }
+        console.print(json.dumps(payload, indent=2, default=str))
+        return
 
     console.print()
     console.print("[bold cyan]ANAMNE -- Memory Statistics[/bold cyan]")
