@@ -1,10 +1,11 @@
 ﻿"""
 ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 11 memory tools covering all three LIGHT layers:
-  Episodic : ask_why, search_decisions, get_file_context, get_stats
-  Scratchpad: remember, list_facts, forget_fact, search_facts, consolidate_facts
-  Working  : working_memory_add, working_memory_active
+Exposes 13 memory tools covering all three LIGHT layers:
+  Episodic  : ask_why, search_decisions, get_file_context, get_stats
+  Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
+              search_facts, consolidate_facts
+  Working   : working_memory_add, working_memory_active
 """
 
 from __future__ import annotations
@@ -167,6 +168,37 @@ def search_facts(
         tag_set = set(tags)
         results = [f for f in results if tag_set.intersection(f.get("tags", []))]
     return results[:limit]
+
+
+@mcp.tool()
+def get_fact(memory_id: str) -> dict | None:
+    """Get full details for a specific scratchpad fact by id.
+
+    Returns the fact, tags, created_at, last_used_at, use_count, and
+    ACT-R activation score. Returns null if the id doesn't exist.
+    """
+    return _store.get_fact(memory_id)
+
+
+@mcp.tool()
+def tag_fact(
+    memory_id: str,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+    set_tags: list[str] | None = None,
+) -> dict:
+    """Add, remove, or replace tags on a scratchpad fact.
+
+    - add: tags to add to existing tags
+    - remove: tags to remove from existing tags
+    - set_tags: replace all tags with exactly these (ignores add/remove)
+
+    Returns {id, tags} with the updated tag list, or {error} if not found.
+    """
+    result = _store.update_fact_tags(memory_id, add=add, remove=remove, set_tags=set_tags)
+    if result is None:
+        return {"error": f"No fact found with id: {memory_id}"}
+    return {"id": memory_id, "tags": result}
 
 
 @mcp.tool()

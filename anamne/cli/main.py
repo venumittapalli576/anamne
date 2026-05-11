@@ -4,15 +4,18 @@ anamne CLI - Brain-inspired personal memory layer for AI tools.
 Episodic memory:
   init              - interactive setup wizard (picks model, writes .env, indexes)
   index             - read git history and build the episodic knowledge graph
+  sync              - incremental re-index (only new commits since last run)
   ask               - cross-layer recall with citations (LIGHT + ACC)
   status            - show knowledge base stats
 
 Scratchpad (durable facts):
   remember          - store a fact; --distill uses LLM to extract many from long text
-  search            - search facts directly (no API key required, ACT-R ranked)
+  search            - search facts (no API key required, hybrid ACT-R ranked)
   recall            - full cross-layer recall (needs API key)
+  info              - show full detail + ACT-R score for one fact
+  tag               - add/remove/set tags on an existing fact
   forget            - delete a specific fact
-  facts             - list all scratchpad facts
+  facts             - list all scratchpad facts (supports --tag filter)
   journal           - timestamped journal entry
   import-chat       - extract facts from exported AI conversations
   capture-clipboard - save clipboard text as a fact
@@ -21,6 +24,10 @@ Scratchpad (durable facts):
 
 Working memory (session-scoped):
   working           - add/list/clear short-lived context notes
+
+Maintenance:
+  clear             - wipe an entire memory layer (scratchpad|working|episodic|all)
+  watch             - auto-consolidation daemon (runs periodically)
 
 Server:
   mcp               - start MCP server for Cursor / Claude Code
@@ -937,7 +944,8 @@ def export(
         content = "\n".join(lines)
 
     else:  # json
-        payload: dict = {"exported_at": date.today().isoformat(), "version": "0.2.0"}
+        from anamne import __version__
+        payload: dict = {"exported_at": date.today().isoformat(), "version": __version__}
 
         if not no_facts:
             payload["scratchpad_facts"] = store.list_facts(limit=10_000)

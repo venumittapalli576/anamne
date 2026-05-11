@@ -176,22 +176,24 @@ anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 
 ## MCP Integration
 
-ANAMNE exposes 11 tools through the MCP protocol, giving any compatible AI assistant
+ANAMNE exposes 13 tools through the MCP protocol, giving any compatible AI assistant
 direct access to your memory layers:
 
-| Tool | What it does |
-|---|---|
-| `ask_why` | Ask why a piece of code exists (Oracle, all layers, cited) |
-| `search_decisions` | Raw semantic search of episodic memory |
-| `get_file_context` | All decisions related to a specific file |
-| `get_stats` | Memory layer statistics |
-| `remember` | Add a fact to scratchpad |
-| `list_facts` | List scratchpad facts |
-| `forget_fact` | Delete a scratchpad fact |
-| `search_facts` | Substring search over scratchpad |
-| `consolidate_facts` | Merge redundant facts (ACC-style) |
-| `working_memory_add` | Add a session note |
-| `working_memory_active` | Get active session context |
+| Tool | Layer | What it does |
+|---|---|---|
+| `ask_why` | All | Oracle recall — cross-layer, cited answer |
+| `search_decisions` | Episodic | Raw semantic search of git/ADR decisions |
+| `get_file_context` | Episodic | All decisions related to a specific file |
+| `get_stats` | All | Memory layer statistics |
+| `remember` | Scratchpad | Store a durable fact |
+| `list_facts` | Scratchpad | List scratchpad facts |
+| `forget_fact` | Scratchpad | Delete a scratchpad fact |
+| `get_fact` | Scratchpad | Full detail for one fact + ACT-R score |
+| `tag_fact` | Scratchpad | Add/remove/set tags on a fact |
+| `search_facts` | Scratchpad | Hybrid ranked search (substring + semantic) |
+| `consolidate_facts` | Scratchpad | Merge redundant facts (ACC-style) |
+| `working_memory_add` | Working | Add a session note (auto-expires) |
+| `working_memory_active` | Working | Get active session context |
 
 ### Claude Code
 
