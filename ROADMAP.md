@@ -446,13 +446,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 37 - Future ideas
+## What's Built (v0.37.0)
+
+| Feature | Status |
+|---|---|
+| `anamne sync-cloud --pull` - additive ingest from git mirror | ✅ |
+| `--yes` to skip the confirmation prompt | ✅ |
+| `anamne notebook --runnable` - live-query code cell prepended | ✅ |
+
+---
+
+## Phase 38 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne notebook --runnable`** - notebook cells use `import anamne` API
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne sync-cloud --pull`** - one-way pull from git mirror to overwrite local
+- **`anamne export --signed`** - signed export bundles for trust
+- **`anamne import-memory --signed`** - verify and import signed bundles
 
 ---
 

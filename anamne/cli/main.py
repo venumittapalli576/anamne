@@ -3829,20 +3829,33 @@ def sync_cloud(
         True, "--push/--no-push",
         help="Run `git push` after committing (default: yes)"
     ),
+    pull: bool = typer.Option(
+        False, "--pull",
+        help="Pull mode: import from `anamne-export.json` in the repo "
+             "(does NOT write or push)"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y",
+        help="Skip confirmation prompts in --pull mode"
+    ),
 ) -> None:
-    """One-way push of a JSON backup into a personal git-backed mirror.
+    """Two-way bridge between ANAMNE and a personal git mirror.
 
-    Writes `anamne-export.json` inside the given local git repo, stages it,
-    commits, and (by default) pushes. Designed for users who run a private
-    GitHub/Gitea/Forgejo repo as their personal cloud sync target.
+    Default mode (push):
+      Writes `anamne-export.json` inside the local git repo, stages,
+      commits, and (by default) pushes. Designed for users who run a
+      private GitHub/Gitea/Forgejo repo as a personal cloud sync target.
 
-    The export is exactly what `anamne backup` produces; restore via
-    `anamne import-memory <file>` on the other machine.
+    --pull mode:
+      Reads `anamne-export.json` from the repo and imports it through
+      `import-memory` semantics (additive merge - existing facts are not
+      deleted; new ones are added). Run `git pull` yourself first.
 
     Examples:
-      anamne sync-cloud --repo ~/anamne-mirror
+      anamne sync-cloud --repo ~/anamne-mirror              # push
       anamne sync-cloud --repo ~/anamne-mirror -m "morning sync"
       anamne sync-cloud --repo ~/anamne-mirror --no-push
+      anamne sync-cloud --repo ~/anamne-mirror --pull       # ingest
     """
     import subprocess
     from datetime import datetime
@@ -3857,6 +3870,53 @@ def sync_cloud(
         raise typer.Exit(code=1)
 
     store = DecisionStore()
+
+    if pull:
+        target = repo_dir / "anamne-export.json"
+        if not target.exists():
+            console.print(
+                f"[red]No anamne-export.json in {repo_dir}.[/red]  "
+                "Run `git pull` and try again."
+            )
+            raise typer.Exit(code=1)
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+        except Exception as e:
+            console.print(f"[red]Cannot parse export file:[/red] {e}")
+            raise typer.Exit(code=1)
+        facts = data.get("scratchpad_facts", []) or []
+        decisions = data.get("episodic_decisions", []) or []
+        working = data.get("working_memory", []) or []
+        console.print(
+            f"\n  [yellow]Pull preview:[/yellow] "
+            f"{len(facts)} fact(s), {len(decisions)} decision(s), "
+            f"{len(working)} working note(s) in the mirror.\n"
+        )
+        if not yes:
+            if not typer.confirm("Merge into local memory?", default=False):
+                console.print("[dim]Cancelled.[/dim]\n")
+                return
+
+        added_facts = 0
+        existing_ids = {f["id"] for f in store.list_facts(limit=100_000)}
+        for f in facts:
+            try:
+                if f.get("id") and f["id"] in existing_ids:
+                    continue  # additive merge - skip dupes by id
+                new_id = store.remember(
+                    f.get("fact") or "",
+                    tags=f.get("tags") or [],
+                )
+                if f.get("pinned") and new_id:
+                    store.pin_fact(new_id)
+                added_facts += 1
+            except Exception:
+                pass
+        console.print(
+            f"  [green]Pulled[/green]  added {added_facts} new fact(s)  "
+            f"[dim](existing-by-id duplicates skipped)[/dim]\n"
+        )
+        return
     payload = {
         "exported_at": datetime.now().isoformat(),
         "version": __version__,
@@ -4016,15 +4076,24 @@ def notebook(
         [], "--tag", "-t", help="Filter facts by tag (repeatable)"
     ),
     limit: int = typer.Option(200, "--limit", "-n", help="Max facts to include"),
+    runnable: bool = typer.Option(
+        False, "--runnable",
+        help="Add a code cell at the top that reads back facts via the ANAMNE API"
+    ),
 ) -> None:
     """Export scratchpad facts as a runnable Jupyter notebook.
 
     Each fact becomes a Markdown cell. Useful for sharing a curated knowledge
     bundle with anyone who has Jupyter installed - no ANAMNE dependency needed.
 
+    With --runnable, the notebook starts with a code cell that uses the
+    `anamne` Python API to live-query the same facts (requires ANAMNE installed
+    on the reader's machine).
+
     Examples:
       anamne notebook today.ipynb
       anamne notebook py.ipynb --tag python --limit 100
+      anamne notebook py.ipynb --runnable
     """
     from anamne.store.graph import DecisionStore
 
@@ -4043,6 +4112,28 @@ def notebook(
             + (f"  (tag: {', '.join(tag)})" if tag else "") + "\n",
         ],
     }]
+
+    if runnable:
+        tag_filter_py = repr(list(tag)) if tag else "None"
+        code_lines = [
+            "# Live-query the current ANAMNE memory (re-runs every cell execute).\n",
+            "from anamne.store.graph import DecisionStore\n",
+            "\n",
+            "store = DecisionStore()\n",
+            f"facts = store.list_facts(limit={limit}, tags={tag_filter_py})\n",
+            "for f in facts:\n",
+            "    pin = ' [PIN]' if f.get('pinned') else ''\n",
+            "    tag_str = (' #' + ' #'.join(f['tags'])) if f.get('tags') else ''\n",
+            "    print(f\"{f['id']}{pin}  {f['fact']}{tag_str}\")\n",
+        ]
+        cells.append({
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": code_lines,
+        })
+
     for f in facts:
         tag_blurb = (
             "  \n*tags: " + ", ".join(f["tags"]) + "*"

@@ -366,10 +366,12 @@ anamne backup --keep 7              # daily cron: retain last week of backups
 # Export scratchpad facts as a runnable Jupyter notebook
 anamne notebook today.ipynb
 anamne notebook py.ipynb --tag python --limit 100
+anamne notebook py.ipynb --runnable               # adds a live-query code cell
 
 # One-way push of a JSON backup into a personal git mirror
 anamne sync-cloud --repo ~/anamne-mirror
 anamne sync-cloud --repo ~/anamne-mirror --no-push
+anamne sync-cloud --repo ~/anamne-mirror --pull --yes   # ingest from mirror
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day

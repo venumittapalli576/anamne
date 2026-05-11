@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.37.0] — 2026-05-11
+
+### Added - Phase 37
+
+**`anamne sync-cloud --pull`** - one-way ingest from git mirror
+- Reads `anamne-export.json` from the local git repo and additively merges
+  the scratchpad facts into local memory
+- Skips facts whose `id` already exists locally (idempotent)
+- `--yes` skips the confirmation prompt
+- You still run `git pull` yourself first; the command only does the import
+
+**`anamne notebook --runnable`** - notebook with live-query code cell
+- Adds a code cell at the top using the ANAMNE Python API to re-fetch facts
+- Reader's machine needs ANAMNE installed; static markdown cells still work
+  without it
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.36.0] — 2026-05-11
 
 ### Added - Phase 36
