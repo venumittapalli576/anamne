@@ -187,6 +187,12 @@ anamne working "debugging login flow" --ttl 120  # 2 hours
 # Search working memory notes
 anamne search-working "debug"
 
+# Quick-jot stash (working memory shorthand, [stash]-prefixed)
+anamne stash "investigate webhook double-fire"
+anamne stash --list
+anamne stash --promote <stash-id>
+anamne stash --clear
+
 # Promote a working note into a permanent scratchpad fact
 anamne promote <working-id>
 anamne promote <working-id> --tag architecture --tag postgres
@@ -351,6 +357,7 @@ anamne fact-of-the-day
 # Markdown snapshot: Pinned + Top activation + Recent + Working
 anamne snapshot
 anamne snapshot --output today.md --limit 30
+anamne snapshot --html --output today.html       # styled HTML variant
 ```
 
 ### Diagnostics

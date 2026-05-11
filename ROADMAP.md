@@ -341,14 +341,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 27 - Future ideas
+## What's Built (v0.27.0)
+
+| Feature | Status |
+|---|---|
+| `anamne stash` - quick-jot working memory shorthand | ✅ |
+| `anamne stash --list / --promote / --clear` | ✅ |
+| `anamne snapshot --html` - HTML output variant | ✅ |
+
+---
+
+## Phase 28 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
 - **`anamne fact-of-the-day --post-to <url>`** - webhook integration
-- **`anamne snapshot --html`** - render the snapshot as HTML
+- **`anamne stash --to-fact-on-promote`** - one-step capture + tag
 
 ---
 

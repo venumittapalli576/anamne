@@ -4,6 +4,28 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.27.0] — 2026-05-11
+
+### Added - Phase 27
+
+**`anamne stash`** - quick-jot working memory shorthand
+- `anamne stash "investigate webhook double-fire"` - adds a `[stash]`-prefixed
+  working memory note (60-minute TTL by default)
+- `anamne stash --list` - show all active stash items
+- `anamne stash --promote <id>` - promote a stash item to scratchpad with
+  the `stash-promoted` tag
+- `anamne stash --clear` - delete every active stash item
+
+**`anamne snapshot --html`** - HTML snapshot variant
+- Same four sections, rendered as minimal styled HTML
+- Pairs with `--output snapshot.html` for sharing in a browser
+- Markdown remains the default
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.26.0] — 2026-05-11
 
 ### Added - Phase 26

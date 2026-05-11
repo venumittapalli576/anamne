@@ -3895,6 +3895,78 @@ def merge(
 
 
 @app.command()
+def stash(
+    text: Optional[str] = typer.Argument(None, help="Note to stash (omit to list)"),
+    list_all: bool = typer.Option(False, "--list", "-l",
+                                  help="List active stash items"),
+    promote_id: Optional[str] = typer.Option(
+        None, "--promote", "-p", metavar="WORKING_ID",
+        help="Promote a stashed item to a permanent scratchpad fact"
+    ),
+    clear: bool = typer.Option(False, "--clear", help="Delete all active stash items"),
+) -> None:
+    """Quick-jot working memory notes (tagged 'stash' for easy lookup).
+
+    `anamne stash "..."` is shorthand for `anamne working "..."`, with the
+    convention that stashed items represent ephemeral context you may want to
+    promote later. Stash items expire on the working memory TTL (60 min).
+
+    Examples:
+      anamne stash "investigate webhook double-fire after 3pm"
+      anamne stash --list
+      anamne stash --promote abc123
+      anamne stash --clear
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+
+    if promote_id:
+        new_id = store.promote_working(promote_id, tags=["stash-promoted"])
+        if new_id is None:
+            console.print(f"[red]No working note with id '{promote_id}'.[/red]")
+            raise typer.Exit(code=1)
+        console.print(
+            f"\n  [green]Promoted[/green] stash [dim]{promote_id}[/dim] "
+            f"-> scratchpad [cyan]{new_id}[/cyan]\n"
+        )
+        return
+
+    if clear:
+        # Remove only stash-tagged working notes
+        active = store.working_active()
+        # Working notes don't have tags; rely on the convention that we
+        # created them via this command. Use working_delete on all that
+        # match a [stash] prefix marker.
+        deleted = 0
+        for w in active:
+            if w["note"].startswith("[stash] "):
+                store.working_delete(w["id"])
+                deleted += 1
+        console.print(f"\n  [green]Cleared {deleted} stash item(s).[/green]\n")
+        return
+
+    if list_all or not text:
+        items = [w for w in store.working_active() if w["note"].startswith("[stash] ")]
+        if not items:
+            console.print("\n  [dim]No active stash items.[/dim]\n")
+            return
+        console.print(f"\n  [bold]{len(items)} stash item(s):[/bold]\n")
+        for w in items:
+            exp = (w.get("expires_at") or "")[:19]
+            body = w["note"][len("[stash] "):]
+            console.print(f"  [cyan]{w['id']}[/cyan]  {body}\n      "
+                          f"[dim]expires {exp}[/dim]")
+        console.print()
+        return
+
+    # Default: add new stash item
+    wid = store.working_add(f"[stash] {text}")
+    console.print(f"\n  [green]Stashed[/green] [cyan]{wid}[/cyan]  -  "
+                  f"{text[:80]}\n")
+
+
+@app.command()
 def snapshot(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o",
@@ -3902,6 +3974,9 @@ def snapshot(
     ),
     limit: int = typer.Option(50, "--limit", "-n",
                               help="Max facts per section"),
+    as_html: bool = typer.Option(
+        False, "--html", help="Emit minimal HTML instead of Markdown"
+    ),
 ) -> None:
     """Print a compact human-readable Markdown snapshot of your memory.
 
@@ -3977,11 +4052,57 @@ def snapshot(
     lines.append("")
 
     text = "\n".join(lines)
+
+    if as_html:
+        # Minimal HTML wrapper - escape and convert basic Markdown lists
+        import html as _html
+        def _md_to_html(md: str) -> str:
+            out: list[str] = []
+            in_list = False
+            for ln in md.splitlines():
+                escaped = _html.escape(ln)
+                if escaped.startswith("# "):
+                    if in_list:
+                        out.append("</ul>"); in_list = False
+                    out.append(f"<h1>{escaped[2:]}</h1>")
+                elif escaped.startswith("## "):
+                    if in_list:
+                        out.append("</ul>"); in_list = False
+                    out.append(f"<h2>{escaped[3:]}</h2>")
+                elif escaped.startswith("- "):
+                    if not in_list:
+                        out.append("<ul>"); in_list = True
+                    out.append(f"<li>{escaped[2:]}</li>")
+                elif escaped.strip().startswith("_") and escaped.strip().endswith("_"):
+                    if in_list:
+                        out.append("</ul>"); in_list = False
+                    out.append(f"<p><em>{escaped.strip().strip('_')}</em></p>")
+                elif escaped.strip() == "":
+                    if in_list:
+                        out.append("</ul>"); in_list = False
+                else:
+                    out.append(f"<p>{escaped}</p>")
+            if in_list:
+                out.append("</ul>")
+            return "\n".join(out)
+
+        body = _md_to_html(text)
+        text = (
+            "<!doctype html><html><head><meta charset='utf-8'>"
+            "<title>ANAMNE snapshot</title>"
+            "<style>body{font-family:system-ui,sans-serif;max-width:780px;"
+            "margin:2rem auto;padding:0 1rem;color:#222;}"
+            "h1,h2{border-bottom:1px solid #ddd;padding-bottom:.2em;}"
+            "li{margin:.25em 0;}code{background:#f4f4f4;padding:0 .25em;"
+            "border-radius:3px;}</style></head><body>\n"
+            f"{body}\n</body></html>"
+        )
+
     if output:
         output.write_text(text, encoding="utf-8")
         console.print(f"\n  [green]Snapshot written[/green]  [bold]{output}[/bold]\n")
     else:
-        # Use plain print so the Markdown survives stdout redirection
+        # Use plain print so the output survives stdout redirection
         print(text)
 
 
