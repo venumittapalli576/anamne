@@ -4,6 +4,35 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.39.0] — 2026-05-11
+
+### Added - Phase 39
+
+**`anamne export --encrypt`** - AES-GCM envelope export
+- Wraps the export JSON in a tiny `{_anamne_envelope, nonce, ciphertext}`
+- Key derived from `ANAMNE_ENC_KEY` via SHA-256 (32-byte AES-256 key)
+- Random 12-byte nonce per export; payload is JSON-serialized first
+- Requires `pip install cryptography` (lazy-imported, friendly error if missing)
+
+**`anamne import-memory --decrypt`** - decrypt envelopes on import
+- Auto-detected when the file has `_anamne_envelope`; `--decrypt` makes it
+  explicit
+- Re-derives the AES key from `ANAMNE_ENC_KEY`
+- Verifies + decrypts, then proceeds with the normal import flow (composable
+  with `--verify`)
+
+**`anamne key-rotate <dir>`** - re-sign bundles with a new HMAC key
+- Reads every JSON file matching `--glob` (default `*.json`)
+- Verifies the existing `_signature` against `ANAMNE_SIGN_KEY_OLD`
+- Re-signs with `ANAMNE_SIGN_KEY` and writes back in place
+- `--dry-run` to preview which files would rotate
+- Reports rotated / bad-old-sig / unsigned counts
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.38.0] — 2026-05-11
 
 ### Added - Phase 38

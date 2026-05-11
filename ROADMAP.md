@@ -466,13 +466,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 39 - Future ideas
+## What's Built (v0.39.0)
+
+| Feature | Status |
+|---|---|
+| `anamne export --encrypt` - AES-GCM envelope (cryptography optional dep) | ✅ |
+| `anamne import-memory --decrypt` - AES-GCM envelope unwrap | ✅ |
+| `anamne key-rotate <dir>` - re-sign signed bundles with a new key | ✅ |
+| `ANAMNE_ENC_KEY` / `ANAMNE_SIGN_KEY_OLD` env vars | ✅ |
+
+---
+
+## Phase 40 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **Multi-user sharing** - signed bundles + sender metadata
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne export --encrypt`** - AES-encrypted bundles (not just signed)
-- **`anamne key-rotate`** - rotate signing key + re-sign existing backups
+- **`anamne audit-log`** - dump every memory mutation to a tamper-evident log
+- **`anamne export --encrypt --sign`** - combine both at once
+- **`anamne sync-cloud --pull --encrypt`** - encrypted git mirror by default
 
 ---
 

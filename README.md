@@ -315,6 +315,7 @@ anamne export --format markdown --output memories.md
 anamne export --tag python --output python-facts.json  # tag-scoped
 anamne export --since 2026-05-01 --output delta.json   # incremental backup
 ANAMNE_SIGN_KEY=hunter2 anamne export --signed --output bundle.json
+ANAMNE_ENC_KEY=hunter2 anamne export --encrypt --output bundle.enc.json
 
 # Bulk-delete all facts with a specific tag
 anamne forget-tag web-import             # preview list then confirm
@@ -359,6 +360,7 @@ anamne import-memory backup.json
 anamne import-memory team-shared-facts.json --dry-run   # preview first
 anamne import-memory old-machine.json --no-working      # skip working memory
 ANAMNE_SIGN_KEY=hunter2 anamne import-memory bundle.json --verify
+ANAMNE_ENC_KEY=hunter2 anamne import-memory bundle.enc.json --decrypt
 
 # One-shot timestamped backup to ~/.anamne/backups/
 anamne backup

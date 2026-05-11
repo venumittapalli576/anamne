@@ -2117,6 +2117,11 @@ def export(
         False, "--signed",
         help="Append an HMAC-SHA256 signature derived from $ANAMNE_SIGN_KEY"
     ),
+    encrypt: bool = typer.Option(
+        False, "--encrypt",
+        help="Wrap the payload in AES-GCM (requires `pip install cryptography` "
+             "and $ANAMNE_ENC_KEY). Output is a small JSON envelope."
+    ),
 ) -> None:
     """Export all memories to JSON or Markdown for backup or migration.
 
@@ -2235,6 +2240,35 @@ def export(
 
         content = _json.dumps(payload, indent=2, default=str)
 
+        if encrypt:
+            import base64
+            import hashlib
+            import os as _os
+            try:
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+            except Exception:
+                console.print(
+                    "[red]--encrypt requires the `cryptography` package "
+                    "(`pip install cryptography`).[/red]"
+                )
+                raise typer.Exit(code=1)
+            enc_key = _os.environ.get("ANAMNE_ENC_KEY")
+            if not enc_key:
+                console.print(
+                    "[red]--encrypt requires ANAMNE_ENC_KEY in the environment.[/red]"
+                )
+                raise typer.Exit(code=1)
+            # Derive a 32-byte AES key from the passphrase via SHA-256
+            aes_key = hashlib.sha256(enc_key.encode("utf-8")).digest()
+            nonce = _os.urandom(12)
+            ct = AESGCM(aes_key).encrypt(nonce, content.encode("utf-8"), None)
+            envelope = {
+                "_anamne_envelope": "AES-GCM-256",
+                "nonce": base64.b64encode(nonce).decode("ascii"),
+                "ciphertext": base64.b64encode(ct).decode("ascii"),
+            }
+            content = _json.dumps(envelope, indent=2)
+
     if output:
         output.write_text(content, encoding="utf-8")
         console.print(f"[green]Exported[/green] to [bold]{output}[/bold]")
@@ -2259,6 +2293,11 @@ def import_memory(
         False, "--verify",
         help="Refuse to import unless the file has a valid HMAC signature "
              "matching $ANAMNE_SIGN_KEY"
+    ),
+    decrypt: bool = typer.Option(
+        False, "--decrypt",
+        help="Decrypt an envelope produced by `export --encrypt` using "
+             "$ANAMNE_ENC_KEY before treating it as JSON"
     ),
 ) -> None:
     """Import facts from another ANAMNE JSON export (backup restore / team sharing).
@@ -2287,7 +2326,8 @@ def import_memory(
         raise typer.Exit(1)
 
     try:
-        payload = _json.loads(file_path.read_text(encoding="utf-8"))
+        raw_text = file_path.read_text(encoding="utf-8")
+        payload = _json.loads(raw_text)
     except Exception as e:
         console.print(f"[red]Could not parse JSON:[/red] {e}")
         raise typer.Exit(1)
@@ -2295,6 +2335,48 @@ def import_memory(
     if not isinstance(payload, dict):
         console.print("[red]Invalid export file  - expected a JSON object.[/red]")
         raise typer.Exit(1)
+
+    if decrypt or payload.get("_anamne_envelope"):
+        import base64
+        import hashlib
+        import os as _os
+        if not payload.get("_anamne_envelope"):
+            console.print(
+                "[red]--decrypt requested but the file is not an "
+                "AES-GCM envelope.[/red]"
+            )
+            raise typer.Exit(code=1)
+        try:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        except Exception:
+            console.print(
+                "[red]--decrypt requires the `cryptography` package "
+                "(`pip install cryptography`).[/red]"
+            )
+            raise typer.Exit(code=1)
+        enc_key = _os.environ.get("ANAMNE_ENC_KEY")
+        if not enc_key:
+            console.print(
+                "[red]Decryption requires ANAMNE_ENC_KEY in the environment.[/red]"
+            )
+            raise typer.Exit(code=1)
+        aes_key = hashlib.sha256(enc_key.encode("utf-8")).digest()
+        try:
+            nonce = base64.b64decode(payload["nonce"])
+            ct = base64.b64decode(payload["ciphertext"])
+            plaintext = AESGCM(aes_key).decrypt(nonce, ct, None)
+        except Exception as e:
+            console.print(f"[red]Decryption failed:[/red] {e}")
+            raise typer.Exit(code=1)
+        try:
+            payload = _json.loads(plaintext.decode("utf-8"))
+        except Exception as e:
+            console.print(f"[red]Decrypted body is not valid JSON:[/red] {e}")
+            raise typer.Exit(code=1)
+        if not isinstance(payload, dict):
+            console.print("[red]Decrypted payload is not a JSON object.[/red]")
+            raise typer.Exit(code=1)
+        console.print("  [green]Decrypted envelope.[/green]")
 
     if verify:
         import hashlib
@@ -3878,6 +3960,93 @@ def _detect_claude_config_path() -> Optional[Path]:
             return c
     # Fall back to the first candidate even if it doesn't exist yet
     return candidates[0] if candidates else None
+
+
+@app.command(name="key-rotate")
+def key_rotate(
+    directory: Path = typer.Argument(
+        ..., help="Directory containing signed export JSON files"
+    ),
+    glob: str = typer.Option(
+        "*.json", "--glob", "-g",
+        help="Glob pattern for files to re-sign (default *.json)"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
+) -> None:
+    """Re-sign every signed export bundle in `directory` with a new key.
+
+    Reads each matching JSON file. If it has a `_signature` produced by the
+    OLD key (in `ANAMNE_SIGN_KEY_OLD`), strips the signature, recomputes a
+    fresh HMAC using the NEW key (`ANAMNE_SIGN_KEY`), and writes the file
+    back in place. Bundles that don't verify under the old key are skipped.
+
+    Use `--dry-run` to preview which files would be updated.
+
+    Environment:
+      ANAMNE_SIGN_KEY      - the NEW signing key (required)
+      ANAMNE_SIGN_KEY_OLD  - the OLD signing key (required, used to verify)
+
+    Examples:
+      ANAMNE_SIGN_KEY=new ANAMNE_SIGN_KEY_OLD=old anamne key-rotate ~/anamne-mirror
+      anamne key-rotate ./backups --dry-run
+    """
+    import hashlib
+    import hmac
+    import os as _os
+
+    new_key = _os.environ.get("ANAMNE_SIGN_KEY")
+    old_key = _os.environ.get("ANAMNE_SIGN_KEY_OLD")
+    if not new_key or not old_key:
+        console.print(
+            "[red]Both ANAMNE_SIGN_KEY (new) and ANAMNE_SIGN_KEY_OLD (old) "
+            "must be set in the environment.[/red]"
+        )
+        raise typer.Exit(code=1)
+    if not directory.exists():
+        console.print(f"[red]Directory not found: {directory}[/red]")
+        raise typer.Exit(code=1)
+
+    files = sorted(directory.glob(glob))
+    if not files:
+        console.print(f"\n  [dim]No files match {glob} in {directory}.[/dim]\n")
+        return
+
+    rotated, skipped_bad, skipped_unsigned = 0, 0, 0
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        sig_block = data.get("_signature")
+        if not isinstance(sig_block, dict):
+            skipped_unsigned += 1
+            continue
+        body_only = {k: v for k, v in data.items() if k != "_signature"}
+        body_str = json.dumps(body_only, sort_keys=True, default=str)
+        expected_old = hmac.new(
+            old_key.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected_old, sig_block.get("value") or ""):
+            skipped_bad += 1
+            continue
+        new_sig = hmac.new(
+            new_key.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        data["_signature"] = {"algo": "HMAC-SHA256", "value": new_sig}
+        if not dry_run:
+            f.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        rotated += 1
+        console.print(f"  [green]rotate[/green]  {f.name}")
+
+    console.print(
+        f"\n  [bold]Summary:[/bold]  "
+        f"rotated={rotated}  bad-old-sig={skipped_bad}  unsigned={skipped_unsigned}"
+    )
+    if dry_run:
+        console.print("  [dim](dry-run; no files were modified)[/dim]")
+    console.print()
 
 
 @app.command(name="sync-cloud")
