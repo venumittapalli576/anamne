@@ -3976,6 +3976,14 @@ def audit_log(
         None, "--output", "-o",
         help="Write the full audit log to a file (with hash chain) instead of stdout"
     ),
+    verify_head: Optional[str] = typer.Option(
+        None, "--verify", metavar="HEAD_HASH",
+        help="Exit 1 unless the current head hash matches this exact value"
+    ),
+    remote_anchor: Optional[str] = typer.Option(
+        None, "--remote-anchor", metavar="URL",
+        help="POST the head hash + length to a webhook (Slack/Discord style)"
+    ),
 ) -> None:
     """Tamper-evident audit log of every memory mutation.
 
@@ -3987,8 +3995,10 @@ def audit_log(
     Examples:
       anamne audit-log
       anamne audit-log --limit 100
-      anamne audit-log --check                 # exit 1 on chain break
+      anamne audit-log --check                 # head + length snapshot
+      anamne audit-log --verify <head-hash>    # exit 1 unless head matches
       anamne audit-log --output audit.log
+      anamne audit-log --remote-anchor https://hooks.slack.com/...
     """
     import hashlib
     import sqlite3
@@ -4023,6 +4033,48 @@ def audit_log(
     # hash across machines/days.
     head = chain[-1]["hash"] if chain else "0" * 64
     chain_len = len(chain)
+
+    if verify_head:
+        if hmac_compare := __import__("hmac").compare_digest(verify_head, head):
+            console.print(
+                f"\n  [green]Head matches[/green]  "
+                f"[dim]({chain_len} entries, head {head[:16]}...)[/dim]\n"
+            )
+        else:
+            console.print(
+                f"\n  [red]Head MISMATCH[/red]\n"
+                f"  [dim]expected:[/dim] {verify_head[:64]}\n"
+                f"  [dim]current: [/dim] {head[:64]}\n"
+            )
+            raise typer.Exit(code=1)
+        # Fall through to the rest only if no other mode selected
+        if not (remote_anchor or output or check):
+            return
+
+    if remote_anchor:
+        import httpx
+        anchor_payload = {
+            "anamne_audit": True,
+            "length": chain_len,
+            "head": head,
+            "text": f"anamne audit head {head[:16]}... ({chain_len} events)",
+        }
+        try:
+            resp = httpx.post(remote_anchor, json=anchor_payload, timeout=10.0)
+            if resp.status_code >= 400:
+                console.print(
+                    f"  [yellow]Anchor webhook returned {resp.status_code}: "
+                    f"{resp.text[:120]}[/yellow]\n"
+                )
+            else:
+                console.print(
+                    f"  [green]Posted anchor[/green]  "
+                    f"[dim]({resp.status_code})[/dim]\n"
+                )
+        except Exception as e:
+            console.print(f"  [red]Anchor webhook failed:[/red] {e}\n")
+        if not (output or check):
+            return
 
     if output:
         # Full JSONL dump

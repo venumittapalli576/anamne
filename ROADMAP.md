@@ -487,12 +487,21 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 41 - Future ideas
+## What's Built (v0.41.0)
+
+| Feature | Status |
+|---|---|
+| `anamne audit-log --verify <head>` - exit-coded chain check | ✅ |
+| `anamne audit-log --remote-anchor <url>` - publish head + length to webhook | ✅ |
+
+---
+
+## Phase 42 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne audit-log --remote-anchor`** - publish head hash to a public URL
-- **`anamne audit-log --verify <head>`** - compare current head against a stored anchor
+- **`anamne audit-log --since <date>`** - chain over a date window
+- **`anamne audit-log --json`** - structured stdout for scripts
 - **`anamne sync-cloud --pull --encrypt`** - encrypted git mirror by default
 
 ---

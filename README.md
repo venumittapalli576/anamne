@@ -416,6 +416,8 @@ anamne doctor
 anamne audit-log
 anamne audit-log --check                 # head-hash check for periodic snapshot
 anamne audit-log --output audit.jsonl    # full chain to a file
+anamne audit-log --verify <head-hash>    # exit 1 if head no longer matches
+anamne audit-log --remote-anchor https://hooks.slack.com/...
 ```
 
 ### Interactive shell

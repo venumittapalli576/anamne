@@ -4,6 +4,25 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.41.0] — 2026-05-11
+
+### Added - Phase 41
+
+**`anamne audit-log --verify <head>`** - exit-coded chain check
+- Exits 1 unless the current chain head exactly matches the supplied hash
+- Uses `hmac.compare_digest` for constant-time comparison
+- Designed for cron-style scripts: record the head once, then verify daily
+
+**`anamne audit-log --remote-anchor <url>`** - publish head to a webhook
+- POSTs `{anamne_audit, length, head, text}` to the URL
+- Slack/Discord-compatible (`text` is a pre-formatted summary)
+- Pair with `--verify` later to detect drift between machines
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.40.0] — 2026-05-11
 
 ### Added - Phase 40
