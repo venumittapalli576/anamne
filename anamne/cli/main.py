@@ -27,6 +27,8 @@ Working memory (session-scoped):
 
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
+  reminder          - schedule a working-memory note to expire at a given time
+  forget-tag        - bulk-delete all facts carrying a specific tag
   clear             - wipe an entire memory layer (scratchpad|working|episodic|all)
   watch             - auto-consolidation daemon (runs periodically)
 
@@ -1803,6 +1805,117 @@ def clear(
     if layer in ("episodic", "all"):
         n = store.clear_episodic()
         console.print(f"[green]Cleared[/green] {n} episodic decision(s)")
+
+
+@app.command()
+def reminder(
+    message: str = typer.Argument(..., help="Reminder text to store in working memory"),
+    in_minutes: Optional[int] = typer.Option(None, "--in", "-i", metavar="MINUTES",
+                                             help="Pop reminder in N minutes from now"),
+    at_time: Optional[str] = typer.Option(None, "--at", "-a", metavar="HH:MM",
+                                          help="Pop reminder at HH:MM today (or tomorrow if time has passed)"),
+) -> None:
+    """Store a time-bound reminder in working memory.
+
+    The note auto-expires and is removed from working memory after the given time,
+    just like any other working-memory note.  MCP tools will stop returning it once
+    it expires.
+
+    If neither --in nor --at is provided, the reminder expires in 60 minutes.
+
+    Examples:
+      anamne reminder "review PR #42"               # expires in 60 min
+      anamne reminder "check deploy logs" --in 15   # expires in 15 min
+      anamne reminder "standup meeting" --at 09:30  # expires at 09:30
+    """
+    from datetime import datetime, timezone, timedelta
+    from anamne.store.graph import DecisionStore
+
+    now = datetime.now(timezone.utc)
+
+    if at_time:
+        # Parse HH:MM and compute TTL
+        try:
+            parts = at_time.strip().split(":")
+            if len(parts) != 2:
+                raise ValueError
+            h, m = int(parts[0]), int(parts[1])
+            local_now = datetime.now()  # local time for comparison
+            target = local_now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if target <= local_now:
+                # Time already passed today - schedule for tomorrow
+                target += timedelta(days=1)
+            ttl = int((target - local_now).total_seconds() / 60)
+            if ttl < 1:
+                ttl = 1
+        except (ValueError, AttributeError):
+            console.print(f"[red]Invalid time format: '{at_time}' - use HH:MM (e.g. 09:30)[/red]")
+            raise typer.Exit(1)
+        at_str = target.strftime("%H:%M")
+    elif in_minutes is not None:
+        if in_minutes < 1:
+            console.print("[red]--in must be at least 1 minute[/red]")
+            raise typer.Exit(1)
+        ttl = in_minutes
+        at_str = None
+    else:
+        ttl = 60
+        at_str = None
+
+    store = DecisionStore()
+    note_text = f"[reminder] {message}"
+    note_id = store.working_add(note_text, ttl_minutes=ttl)
+
+    expire_desc = f"at {at_str}" if at_str else f"in {ttl} min"
+    console.print(f"\n  [green]Reminder set[/green]  (expires {expire_desc})")
+    console.print(f"  [dim]{note_id}[/dim]  {message}\n")
+
+
+@app.command(name="forget-tag")
+def forget_tag(
+    tag: str = typer.Argument(..., help="Tag whose facts should be deleted"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Delete all scratchpad facts that carry a specific tag.
+
+    Useful for bulk-cleaning an import batch, removing a deprecated topic,
+    or wiping all facts from a specific web import session.
+
+    Examples:
+      anamne forget-tag web-import             # preview then confirm
+      anamne forget-tag python --yes           # skip confirmation
+      anamne forget-tag docs.example.com       # wipe a domain import
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    facts = store.list_facts(limit=10_000, tags=[tag])
+
+    if not facts:
+        console.print(f"[dim]No facts with tag '[cyan]{tag}[/cyan]'. Nothing to delete.[/dim]")
+        return
+
+    console.print(f"\n  [yellow]Found {len(facts)} fact(s) with tag '[cyan]{tag}[/cyan]':[/yellow]\n")
+    for f in facts[:10]:
+        console.print(f"  [dim]{f['id']}[/dim]  {f['fact'][:80]}")
+    if len(facts) > 10:
+        console.print(f"  [dim]... and {len(facts) - 10} more[/dim]")
+    console.print()
+
+    if not yes:
+        if not typer.confirm(f"Delete all {len(facts)} fact(s) tagged '{tag}'?", default=False):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    deleted = 0
+    for f in facts:
+        try:
+            store.forget_fact(f["id"])
+            deleted += 1
+        except Exception:
+            pass
+
+    console.print(f"\n  [green]Deleted {deleted} fact(s) with tag '[cyan]{tag}[/cyan]'.[/green]\n")
 
 
 @app.command()

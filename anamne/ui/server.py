@@ -437,7 +437,7 @@ async function loadGraph() {
     <div class="graph-legend">
       <span><span class="legend-dot" style="background:var(--accent)"></span> Scratchpad fact</span>
       <span><span class="legend-sq" style="background:var(--orange)"></span> Tag (shared by 2+ facts)</span>
-      <span style="margin-left:auto;color:var(--muted)">Hover for details &nbsp;·&nbsp; Drag to reposition</span>
+      <span style="margin-left:auto;color:var(--muted)">Hover for details &nbsp;·&nbsp; Click fact for history &nbsp;·&nbsp; Drag to reposition</span>
     </div>
     <div id="graph-wrap">
       <div id="graph-tip"></div>
@@ -557,19 +557,25 @@ async function loadGraph() {
     });
     ne.addEventListener('mouseleave', () => { ne.setAttribute('opacity','0.85'); tip.style.display='none'; });
 
-    // Drag
-    let dragging = false, dox=0, doy=0;
+    // Drag + click (click opens history for fact nodes)
+    let dragging = false, movedPx = 0;
     ne.addEventListener('mousedown', (ev) => {
-      dragging = true; dox = ev.clientX - ns[i].x; doy = ev.clientY - ns[i].y;
-      ev.preventDefault();
+      dragging = true; movedPx = 0; ev.preventDefault();
     });
     document.addEventListener('mousemove', (ev) => {
       if (!dragging) return;
+      movedPx++;
       const bx = wrap.getBoundingClientRect();
       ns[i].x = ev.clientX - bx.left; ns[i].y = ev.clientY - bx.top;
       ns[i].vx = 0; ns[i].vy = 0;
     });
-    document.addEventListener('mouseup', () => { dragging = false; });
+    document.addEventListener('mouseup', (ev) => {
+      if (dragging && movedPx < 4 && ns[i].type === 'fact') {
+        // Treat as click: open history modal
+        showHistory(ns[i].id);
+      }
+      dragging = false;
+    });
   });
 
   function render() {

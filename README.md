@@ -179,6 +179,15 @@ anamne tag <memory-id> --set python --set testing   # replaces all tags
 anamne forget <memory-id>
 ```
 
+### Reminders
+
+```bash
+# Store a time-bound reminder in working memory (auto-expires)
+anamne reminder "check build logs"              # expires in 60 min (default)
+anamne reminder "review PR #42" --in 30        # expires in 30 minutes
+anamne reminder "standup" --at 09:30           # expires at 09:30 today
+```
+
 ### Memory maintenance
 
 ```bash
@@ -204,6 +213,10 @@ anamne watch-repos ./frontend ./backend --interval 120   # check every 2 min
 # Export all memories to JSON or Markdown (for backup / migration)
 anamne export --output backup.json
 anamne export --format markdown --output memories.md
+
+# Bulk-delete all facts with a specific tag
+anamne forget-tag web-import             # preview list then confirm
+anamne forget-tag docs.example.com --yes # skip confirmation
 
 # Wipe an entire memory layer (irreversible)
 anamne clear scratchpad        # or: working | episodic | all

@@ -139,12 +139,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 9 - Future ideas
+## What's Built (v0.9.0)
+
+| Feature | Status |
+|---|---|
+| Graph click-through: click fact node opens history modal | ✅ |
+| Click vs drag detection (< 4px movement = click) | ✅ |
+| `anamne reminder` - time-bound working-memory notes (`--in N` or `--at HH:MM`) | ✅ |
+| `anamne forget-tag <tag>` - bulk delete all facts with a tag, with preview | ✅ |
+
+---
+
+## Phase 10 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **`anamne reminder`** - schedule a reminder that pops a working-memory note at a time
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **Graph click-through** - click a fact node in the graph to open its history modal
+- **`anamne pin <id>`** - mark a fact as permanent (never auto-consolidated away)
+- **`anamne search --tag`** - filter search results by tag
 
 ---
 

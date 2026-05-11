@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.9.0] — 2026-05-11
+
+### Added - Phase 9
+
+**Graph click-through** (`anamne ui`)
+- Clicking a fact node in the Fact Graph tab now opens its change-history modal
+- Uses click vs drag detection (< 4px movement = click, larger = drag)
+- Legend updated: "Click fact for history · Drag to reposition"
+
+**`anamne reminder`** - time-bound working-memory notes
+- `anamne reminder "check build logs" --in 30` - note expires in 30 minutes
+- `anamne reminder "standup" --at 09:30` - note expires at 09:30 today (tomorrow if past)
+- Default: 60 minutes if neither `--in` nor `--at` is given
+- Reminder text is prefixed with `[reminder]` so it stands out in working memory
+
+**`anamne forget-tag <tag>`** - bulk-delete all facts with a tag
+- Preview list (first 10 facts) before confirmation
+- `--yes` flag to skip prompt for scripting
+- Handy for wiping an entire web-import batch (`anamne forget-tag docs.example.com`)
+
+### Tests
+- 66 tests, all passing
+
+---
+
 ## [0.8.0] — 2026-05-11
 
 ### Added - Phase 8
