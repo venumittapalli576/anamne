@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.29.0] — 2026-05-11
+
+### Added - Phase 29
+
+**`anamne quiz`** - LLM-driven Q&A drill
+- Picks N random facts and asks the model to write one question + answer each
+- `--tag X` restricts to a topic
+- Touches every source fact for ACT-R activation
+- Useful for spaced-repetition self-review
+
+**`anamne template`** - named text templates
+- `template add <name> "<body>"` - store a reusable format string
+- `template list` - dump all defined templates
+- `template use <name> "<text>"` - render template + remember in one step
+- `template remove <name>` - delete a template
+- Templates with a single `{placeholder}` substitute the trailing text directly
+- Multi-placeholder templates concatenate the trailing text as a suffix
+- Storage: `~/.anamne/templates.json` (plain JSON, editable by hand)
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.28.0] — 2026-05-11
 
 ### Added - Phase 28

@@ -361,14 +361,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 29 - Future ideas
+## What's Built (v0.29.0)
+
+| Feature | Status |
+|---|---|
+| `anamne quiz` - LLM Q&A drill against random facts | ✅ |
+| `anamne template add / list / use / remove` - reusable text templates | ✅ |
+| `~/.anamne/templates.json` JSON-backed template store | ✅ |
+
+---
+
+## Phase 30 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne quiz`** - LLM-driven Q&A drill against your facts
-- **`anamne stash --to-fact-on-promote`** - one-step capture + tag
+- **`anamne quiz --grade`** - prompt the user, then have the LLM grade an answer
+- **`anamne template export / import`** - share templates across machines
 
 ---
 

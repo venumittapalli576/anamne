@@ -3769,6 +3769,202 @@ def fact_of_the_day(
             console.print(f"  [red]Webhook failed:[/red] {e}\n")
 
 
+def _templates_path() -> Path:
+    """Location of the JSON file backing `anamne template`."""
+    p = Path.home() / ".anamne" / "templates.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        p.write_text("{}", encoding="utf-8")
+    return p
+
+
+def _load_templates() -> dict:
+    try:
+        return json.loads(_templates_path().read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_templates(data: dict) -> None:
+    _templates_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+@app.command()
+def template(
+    action: str = typer.Argument(
+        ..., help="Action: add | list | use | remove"
+    ),
+    name: Optional[str] = typer.Argument(None, help="Template name (for add/use/remove)"),
+    body: Optional[str] = typer.Argument(
+        None, help="Template body (for add) or substitution value (for use)"
+    ),
+    tag: list[str] = typer.Option(
+        [], "--tag", "-t", help="Tags to attach when using a template"
+    ),
+) -> None:
+    """Manage named text templates for fast structured fact entry.
+
+    Templates store reusable Python-style format strings. Use `{x}` placeholders
+    in the body; provide their values via `--var KEY=VAL` (or as positional body
+    text when there is exactly one placeholder).
+
+    Examples:
+      anamne template add decision "Decision: {what}. Why: {why}."
+      anamne template list
+      anamne template use decision "Use Postgres. Why: concurrent writes." --tag db
+      anamne template remove decision
+
+    Notes:
+      - For the `use` action, the `body` positional is the substitution text:
+        - If the template has exactly one `{x}` placeholder it is substituted
+          verbatim.
+        - Otherwise the entire template body is treated as a prefix and the
+          `body` text is appended after a space.
+      - Templates are stored at ~/.anamne/templates.json (plain JSON, edit by hand
+        if you prefer).
+    """
+    from anamne.store.graph import DecisionStore
+
+    templates = _load_templates()
+
+    if action == "list":
+        if not templates:
+            console.print("\n  [dim]No templates defined.[/dim]\n")
+            return
+        console.print(f"\n  [bold]{len(templates)} template(s):[/bold]\n")
+        for k, v in sorted(templates.items()):
+            console.print(f"  [cyan]{k:20}[/cyan]  {v}")
+        console.print()
+        return
+
+    if action == "add":
+        if not name or not body:
+            console.print("[red]usage: anamne template add <name> \"<body>\"[/red]")
+            raise typer.Exit(code=1)
+        templates[name] = body
+        _save_templates(templates)
+        console.print(f"\n  [green]Saved template[/green]  [cyan]{name}[/cyan]  -  "
+                      f"{body[:80]}\n")
+        return
+
+    if action == "remove":
+        if not name:
+            console.print("[red]usage: anamne template remove <name>[/red]")
+            raise typer.Exit(code=1)
+        if name not in templates:
+            console.print(f"[yellow]No template named '{name}'.[/yellow]")
+            raise typer.Exit(code=1)
+        del templates[name]
+        _save_templates(templates)
+        console.print(f"\n  [green]Removed[/green]  [cyan]{name}[/cyan]\n")
+        return
+
+    if action == "use":
+        if not name:
+            console.print("[red]usage: anamne template use <name> \"<text>\" "
+                          "[--tag X][/red]")
+            raise typer.Exit(code=1)
+        if name not in templates:
+            console.print(f"[yellow]No template named '{name}'.[/yellow]")
+            raise typer.Exit(code=1)
+        tmpl = templates[name]
+        # Count placeholders
+        import string
+        formatter = string.Formatter()
+        placeholders = [
+            fname for _, fname, _, _ in formatter.parse(tmpl)
+            if fname is not None and fname != ""
+        ]
+        if len(placeholders) == 1 and body is not None:
+            try:
+                final = tmpl.format(**{placeholders[0]: body})
+            except KeyError:
+                final = f"{tmpl} {body}"
+        elif body:
+            final = f"{tmpl} {body}"
+        else:
+            final = tmpl
+
+        store = DecisionStore()
+        mid = store.remember(final, tags=tag or None)
+        console.print(
+            f"\n  [green]Stored via template[/green]  [cyan]{mid}[/cyan]\n"
+            f"  {final}\n"
+        )
+        return
+
+    console.print(f"[red]Unknown action '{action}'. Use add | list | use | remove.[/red]")
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def quiz(
+    count: int = typer.Option(3, "--count", "-n", help="Number of questions"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Restrict to facts with this tag"),
+) -> None:
+    """LLM-driven Q&A drill against your scratchpad facts.
+
+    Picks N random facts and asks the LLM to write one question per fact, plus
+    the model-provided answer. Touches the source facts for ACT-R activation.
+    Useful for spaced repetition / self-quiz of durable knowledge.
+
+    Examples:
+      anamne quiz
+      anamne quiz --count 5
+      anamne quiz --tag architecture --count 3
+    """
+    import random
+    from anamne.store.graph import DecisionStore
+    from anamne.llm import LLMClient
+
+    store = DecisionStore()
+    pool = store.list_facts(limit=10_000, tags=tag or None)
+    if not pool:
+        console.print("\n  [dim]No facts to quiz on.[/dim]\n")
+        return
+    sample = random.sample(pool, min(count, len(pool)))
+
+    try:
+        client = LLMClient()
+    except Exception as e:
+        console.print(f"  [red]LLM unavailable:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    console.print(f"\n  [bold]Quiz[/bold]  [dim]({len(sample)} question(s))[/dim]\n")
+    for i, f in enumerate(sample, start=1):
+        prompt = (
+            "Write one short quiz question about the fact below, then on a "
+            "new line write the one-sentence answer. Reply EXACTLY in this "
+            "format:\n"
+            "Q: <question>\nA: <answer>\n\n"
+            f"FACT: {f['fact']}"
+        )
+        try:
+            raw = client.complete(prompt, max_tokens=200).text.strip()
+        except Exception as e:
+            console.print(f"  [yellow]LLM error: {e}[/yellow]")
+            continue
+        q_line, a_line = "", ""
+        for ln in raw.splitlines():
+            if ln.lower().startswith("q:"):
+                q_line = ln[2:].strip()
+            elif ln.lower().startswith("a:"):
+                a_line = ln[2:].strip()
+        if not q_line or not a_line:
+            # Fall back to raw output
+            console.print(f"  [bold]Q{i}.[/bold] {raw}\n")
+            continue
+        console.print(f"  [bold]Q{i}.[/bold] {q_line}")
+        console.print(f"      [dim]A:[/dim] {a_line}")
+        console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]")
+        console.print()
+
+    try:
+        store.touch_facts([f["id"] for f in sample])
+    except Exception:
+        pass
+
+
 @app.command(name="random")
 def random_facts(
     count: int = typer.Argument(5, help="How many random facts to surface"),
