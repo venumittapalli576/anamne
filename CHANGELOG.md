@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.34.0] — 2026-05-11
+
+### Added - Phase 34
+
+**`anamne tools --schema <name>`** - dump full JSON schema for one tool
+- Prints the tool's name, description, and `inputSchema` parameters
+- Helps verify exactly what an AI client will see when calling the tool
+
+**`anamne working --to-fact <id>`** - promote without pinning
+- Symmetric counterpart to `--pin`: moves a working note to scratchpad
+  without protecting it from auto-consolidation
+- `--tag` attaches tags during promotion
+
+**`anamne quiz --resume`** - continue an unfinished quiz session
+- Saves pending question ids to `~/.anamne/quiz-state.json` after each item
+- Ctrl-C mid-grade keeps the in-flight question as the next "pending" item
+- `--resume` re-hydrates the remaining facts and continues
+- State file is cleared automatically when a quiz completes
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.33.0] — 2026-05-11
 
 ### Added - Phase 33

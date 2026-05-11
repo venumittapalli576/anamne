@@ -414,13 +414,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 34 - Future ideas
+## What's Built (v0.34.0)
+
+| Feature | Status |
+|---|---|
+| `anamne tools --schema <name>` - full JSON schema dump for one tool | ✅ |
+| `anamne working --to-fact <id>` - promote without pinning | ✅ |
+| `anamne quiz --resume` - continue an unfinished quiz | ✅ |
+| `~/.anamne/quiz-state.json` per-session state file | ✅ |
+
+---
+
+## Phase 35 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne quiz --resume`** - continue an unfinished quiz session
-- **`anamne working --to-fact`** - promote without pinning (alias for promote)
-- **`anamne tools --schema <name>`** - dump full JSON schema for one tool
+- **`anamne diff --history`** - compare against an older version in fact_history
+- **`anamne mcp-config`** - print Claude / Cursor config snippets pre-filled
+- **`anamne notebook`** - dump scratchpad facts as a runnable Jupyter notebook
 
 ---
 

@@ -2472,9 +2472,13 @@ def working(
         None, "--pin", metavar="WORKING_ID",
         help="Promote a working note to scratchpad AND pin it in one step"
     ),
+    to_fact_id: Optional[str] = typer.Option(
+        None, "--to-fact", metavar="WORKING_ID",
+        help="Promote a working note to scratchpad WITHOUT pinning"
+    ),
     tag: list[str] = typer.Option(
         [], "--tag", "-t",
-        help="Tags to attach when promoting via --pin"
+        help="Tags to attach when promoting via --pin or --to-fact"
     ),
 ) -> None:
     """Manage working memory (short-lived session context).
@@ -2498,6 +2502,17 @@ def working(
         console.print(
             f"\n  [green]Promoted + pinned[/green]  "
             f"[dim]{pin_id}[/dim] -> [cyan]{new_id}[/cyan]\n"
+        )
+        return
+
+    if to_fact_id:
+        new_id = store.promote_working(to_fact_id, tags=tag or None)
+        if new_id is None:
+            console.print(f"[red]No working memory note with id: {to_fact_id}[/red]")
+            raise typer.Exit(code=1)
+        console.print(
+            f"\n  [green]Promoted to scratchpad[/green]  "
+            f"[dim]{to_fact_id}[/dim] -> [cyan]{new_id}[/cyan]\n"
         )
         return
 
@@ -3783,6 +3798,10 @@ def tag_stats(
 @app.command()
 def tools(
     as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    schema: Optional[str] = typer.Option(
+        None, "--schema", "-s", metavar="TOOL_NAME",
+        help="Dump the full JSON schema for a specific tool"
+    ),
 ) -> None:
     """List every tool the MCP server would expose to AI clients.
 
@@ -3824,7 +3843,18 @@ def tools(
             desc = getattr(t, "description", None) or (
                 t.get("description") if isinstance(t, dict) else ""
             )
-            items.append({"name": name, "description": (desc or "").strip()})
+            # FastMCP may expose parameters / inputSchema differently per version
+            params = (
+                getattr(t, "inputSchema", None)
+                or getattr(t, "parameters", None)
+                or (t.get("inputSchema") if isinstance(t, dict) else None)
+                or (t.get("parameters") if isinstance(t, dict) else None)
+            )
+            items.append({
+                "name": name,
+                "description": (desc or "").strip(),
+                "parameters": params,
+            })
     except Exception as e:
         console.print(f"[red]Could not introspect MCP tools:[/red] {e}")
         raise typer.Exit(code=1)
@@ -3833,8 +3863,21 @@ def tools(
         console.print("\n  [dim]No MCP tools detected.[/dim]\n")
         return
 
+    if schema:
+        match = next((it for it in items if it["name"] == schema), None)
+        if not match:
+            console.print(f"[yellow]No MCP tool named '{schema}'.[/yellow]")
+            raise typer.Exit(code=1)
+        console.print(json.dumps(match, indent=2, default=str))
+        return
+
     if as_json:
-        console.print(json.dumps(items, indent=2))
+        # Drop parameter blobs from the summary view to keep it compact
+        summary = [
+            {"name": it["name"], "description": it["description"]}
+            for it in items
+        ]
+        console.print(json.dumps(summary, indent=2))
         return
 
     console.print(f"\n  [bold]{len(items)} MCP tool(s):[/bold]\n")
@@ -4200,6 +4243,10 @@ def quiz(
         "normal", "--difficulty", "-d",
         help="Difficulty: easy | normal | hard"
     ),
+    resume: bool = typer.Option(
+        False, "--resume",
+        help="Continue an unfinished quiz session (uses ~/.anamne/quiz-state.json)"
+    ),
 ) -> None:
     """LLM-driven Q&A drill against your scratchpad facts.
 
@@ -4220,12 +4267,37 @@ def quiz(
     from anamne.store.graph import DecisionStore
     from anamne.llm import LLMClient
 
+    quiz_state_path = Path.home() / ".anamne" / "quiz-state.json"
+
     store = DecisionStore()
-    pool = store.list_facts(limit=10_000, tags=tag or None)
-    if not pool:
-        console.print("\n  [dim]No facts to quiz on.[/dim]\n")
-        return
-    sample = random.sample(pool, min(count, len(pool)))
+
+    sample: list[dict] = []
+    seen_ids: set[str] = set()
+
+    if resume and quiz_state_path.exists():
+        try:
+            state = json.loads(quiz_state_path.read_text(encoding="utf-8"))
+            pending = state.get("pending", [])
+            seen_ids = set(state.get("seen", []))
+            # Re-hydrate facts by id (skip any since-deleted)
+            for fid in pending:
+                f = store.get_fact(fid)
+                if f is not None:
+                    sample.append(f)
+            if not sample:
+                console.print(
+                    "\n  [dim]No pending quiz items to resume; starting fresh.[/dim]\n"
+                )
+        except Exception:
+            sample = []
+
+    if not sample:
+        pool = store.list_facts(limit=10_000, tags=tag or None)
+        if not pool:
+            console.print("\n  [dim]No facts to quiz on.[/dim]\n")
+            return
+        sample = random.sample(pool, min(count, len(pool)))
+        seen_ids = set()
 
     try:
         client = LLMClient()
@@ -4255,10 +4327,35 @@ def quiz(
     }
     diff_clause = diff_clauses.get(difficulty.lower(), diff_clauses["normal"])
 
+    def _save_state(pending_facts: list[dict]) -> None:
+        try:
+            quiz_state_path.parent.mkdir(parents=True, exist_ok=True)
+            quiz_state_path.write_text(
+                json.dumps({
+                    "pending": [pf["id"] for pf in pending_facts],
+                    "seen": sorted(seen_ids),
+                }, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    def _clear_state() -> None:
+        try:
+            if quiz_state_path.exists():
+                quiz_state_path.unlink()
+        except Exception:
+            pass
+
     console.print(f"\n  [bold]Quiz[/bold]  [dim]({len(sample)} question(s)"
                   f"{' - interactive grading' if grade else ''}"
-                  f", difficulty={difficulty})[/dim]\n")
+                  f", difficulty={difficulty}"
+                  f"{', resumed' if resume else ''})[/dim]\n")
+    interrupted = False
     for i, f in enumerate(sample, start=1):
+        # Update state to reflect remaining work BEFORE processing this question.
+        # On Ctrl-C, the current item is the next "pending" item to resume.
+        _save_state(sample[i - 1:])
         prompt = (
             "Write one short quiz question about the fact below, then on a "
             "new line write the one-sentence answer. " + diff_clause + " "
@@ -4270,6 +4367,7 @@ def quiz(
             raw = client.complete(prompt, max_tokens=200).text.strip()
         except Exception as e:
             console.print(f"  [yellow]LLM error: {e}[/yellow]")
+            seen_ids.add(f["id"])
             continue
         q_line, a_line = "", ""
         for ln in raw.splitlines():
@@ -4279,6 +4377,7 @@ def quiz(
                 a_line = ln[2:].strip()
         if not q_line or not a_line:
             console.print(f"  [bold]Q{i}.[/bold] {raw}\n")
+            seen_ids.add(f["id"])
             continue
 
         console.print(f"  [bold]Q{i}.[/bold] {q_line}")
@@ -4286,13 +4385,20 @@ def quiz(
             console.print(f"      [dim]A:[/dim] {a_line}")
             console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]")
             console.print()
+            seen_ids.add(f["id"])
             continue
 
         # Interactive grading
         try:
             user_answer = input("    your answer> ").strip()
         except (EOFError, KeyboardInterrupt):
-            console.print("\n  [dim]quiz interrupted[/dim]\n")
+            # Keep this fact as still-pending so --resume picks it up.
+            _save_state(sample[i - 1:])
+            console.print(
+                "\n  [dim]quiz interrupted - run [bold]anamne quiz --resume"
+                "[/bold] to continue[/dim]\n"
+            )
+            interrupted = True
             break
         if not user_answer:
             console.print(f"      [dim]skipped[/dim]  expected: {a_line}\n")
@@ -4329,6 +4435,10 @@ def quiz(
         console.print(f"      [{colour}]{verdict.upper()}[/{colour}]  {reason}")
         console.print(f"      [dim]reference:[/dim] {a_line}")
         console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]\n")
+        seen_ids.add(f["id"])
+
+    if not interrupted:
+        _clear_state()
 
     if grade and (correct_count + partial_count + wrong_count) > 0:
         total = correct_count + partial_count + wrong_count
