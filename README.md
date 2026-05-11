@@ -353,6 +353,12 @@ anamne backup --keep 7              # daily cron: retain last week of backups
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
+anamne fact-of-the-day --post-to https://hooks.slack.com/services/...
+
+# Sample N random facts for review or self-quiz
+anamne random 5
+anamne random 10 --tag python
+anamne random 3 --pinned
 
 # Markdown snapshot: Pinned + Top activation + Recent + Working
 anamne snapshot

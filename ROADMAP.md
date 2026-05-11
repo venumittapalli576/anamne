@@ -351,13 +351,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 28 - Future ideas
+## What's Built (v0.28.0)
+
+| Feature | Status |
+|---|---|
+| `anamne fact-of-the-day --post-to <url>` - Slack/Discord webhook payload | ✅ |
+| `anamne random <N>` - sample N random facts (review/self-quiz) | ✅ |
+| `anamne random --tag / --pinned` filters | ✅ |
+
+---
+
+## Phase 29 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne fact-of-the-day --post-to <url>`** - webhook integration
+- **`anamne quiz`** - LLM-driven Q&A drill against your facts
 - **`anamne stash --to-fact-on-promote`** - one-step capture + tag
 
 ---

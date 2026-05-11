@@ -4,6 +4,28 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.28.0] — 2026-05-11
+
+### Added - Phase 28
+
+**`anamne fact-of-the-day --post-to <url>`** - webhook integration
+- POSTs a JSON payload to any URL when a fact is surfaced
+- Payload shape: `{id, fact, tags, pinned, text}` where `text` is a
+  pre-formatted message
+- Works directly with Slack/Discord-style webhook consumers that read `text`
+- Designed for daily-cron + chat integration
+
+**`anamne random <N>`** - sample N random facts for review
+- Useful for self-quiz, spaced-repetition style memory reinforcement
+- `--tag X` restricts the pool by tag
+- `--pinned` samples only from pinned facts
+- Touches every surfaced fact for ACT-R activation
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.27.0] — 2026-05-11
 
 ### Added - Phase 27

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anamne"
-version = "0.27.0"
+version = "0.28.0"
 description = "Brain-inspired personal memory layer for AI tools"
 readme = "README.md"
 license = { text = "MIT" }

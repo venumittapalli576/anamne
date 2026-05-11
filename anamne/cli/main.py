@@ -3692,14 +3692,24 @@ def diff(
 
 
 @app.command(name="fact-of-the-day")
-def fact_of_the_day() -> None:
+def fact_of_the_day(
+    post_to: Optional[str] = typer.Option(
+        None, "--post-to", metavar="URL",
+        help="POST the fact as JSON to a webhook (Slack-style payloads supported)"
+    ),
+) -> None:
     """Surface one fact at random from pinned + top-activation facts.
 
     Designed to be called on shell login or before a coding session - quick
     reminder of something durable. Touches the fact for ACT-R activation.
 
+    With `--post-to`, sends a JSON POST to the URL. The payload includes
+    `{id, fact, tags, pinned, text}` where `text` is a pre-formatted message
+    (works with Slack/Discord-style hooks that accept `text`).
+
     Examples:
       anamne fact-of-the-day
+      anamne fact-of-the-day --post-to https://hooks.slack.com/services/...
     """
     import random
     from anamne.store.graph import DecisionStore
@@ -3731,6 +3741,69 @@ def fact_of_the_day() -> None:
     console.print()
     try:
         store.touch_facts([chosen["id"]])
+    except Exception:
+        pass
+
+    if post_to:
+        import httpx
+        prefix = "[pinned] " if chosen.get("pinned") else ""
+        text = f"{prefix}{chosen['fact']}  (tags: {tag_str})"
+        payload = {
+            "id": chosen["id"],
+            "fact": chosen["fact"],
+            "tags": chosen.get("tags") or [],
+            "pinned": bool(chosen.get("pinned")),
+            "text": text,  # Slack/Discord-style consumers usually want `text`
+        }
+        try:
+            resp = httpx.post(post_to, json=payload, timeout=10.0)
+            if resp.status_code >= 400:
+                console.print(
+                    f"  [yellow]Webhook returned {resp.status_code}: "
+                    f"{resp.text[:120]}[/yellow]\n"
+                )
+            else:
+                console.print(f"  [green]Posted to webhook[/green]  "
+                              f"[dim]({resp.status_code})[/dim]\n")
+        except Exception as e:
+            console.print(f"  [red]Webhook failed:[/red] {e}\n")
+
+
+@app.command(name="random")
+def random_facts(
+    count: int = typer.Argument(5, help="How many random facts to surface"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag"),
+    pinned_only: bool = typer.Option(False, "--pinned", help="Only sample from pinned facts"),
+) -> None:
+    """Pull N random scratchpad facts for review or self-quiz.
+
+    Touches each surfaced fact (ACT-R activation bump).
+
+    Examples:
+      anamne random 5
+      anamne random 10 --tag python
+      anamne random 3 --pinned
+    """
+    import random
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    pool = store.list_facts(limit=10_000, tags=tag or None)
+    if pinned_only:
+        pool = [f for f in pool if f.get("pinned")]
+    if not pool:
+        console.print("\n  [dim]No facts in the requested pool.[/dim]\n")
+        return
+    sample = random.sample(pool, min(count, len(pool)))
+    console.print(f"\n  [bold]{len(sample)} random fact(s):[/bold]\n")
+    for f in sample:
+        pin = " [yellow]*[/yellow]" if f.get("pinned") else ""
+        console.print(f"  [cyan]{f['id']}[/cyan]{pin}  {f['fact']}")
+        if f.get("tags"):
+            console.print(f"      [dim]tags:[/dim] {', '.join(f['tags'])}")
+    console.print()
+    try:
+        store.touch_facts([f["id"] for f in sample])
     except Exception:
         pass
 
