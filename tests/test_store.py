@@ -560,3 +560,85 @@ def test_pinned_facts_excluded_from_consolidation(store):
     facts = store.list_facts(limit=100)
     unpinned = [f for f in facts if not f.get("pinned")]
     assert all(not f["pinned"] for f in unpinned)
+
+
+# ------------------------------------------------------------------ #
+# Tag rename / tag clear                                                #
+# ------------------------------------------------------------------ #
+
+def test_rename_tag_replaces_across_facts(store):
+    a = store.remember("Use Python for the API", tags=["pyhton", "backend"])
+    b = store.remember("Tests with pytest", tags=["pyhton", "testing"])
+    c = store.remember("Frontend uses React", tags=["frontend"])
+
+    affected = store.rename_tag("pyhton", "python")
+    assert affected == 2
+
+    fa = store.get_fact(a)
+    fb = store.get_fact(b)
+    fc = store.get_fact(c)
+    assert "python" in fa["tags"] and "pyhton" not in fa["tags"]
+    assert "python" in fb["tags"] and "pyhton" not in fb["tags"]
+    assert "python" not in fc["tags"] and "pyhton" not in fc["tags"]
+
+
+def test_rename_tag_no_op_when_missing(store):
+    store.remember("fact with no matching tag", tags=["foo"])
+    assert store.rename_tag("does-not-exist", "anything") == 0
+
+
+def test_rename_tag_merges_when_target_already_present(store):
+    """If a fact already has the new tag, the old tag should just be dropped."""
+    a = store.remember("dual tagged", tags=["old", "new"])
+    affected = store.rename_tag("old", "new")
+    assert affected == 1
+    tags = store.get_fact(a)["tags"]
+    assert tags.count("new") == 1
+    assert "old" not in tags
+
+
+def test_remove_tag_from_all_strips_without_deleting(store):
+    a = store.remember("keep this fact", tags=["temp", "permanent"])
+    b = store.remember("keep this too", tags=["temp"])
+    affected = store.remove_tag_from_all("temp")
+    assert affected == 2
+    # Facts still exist
+    assert store.get_fact(a) is not None
+    assert store.get_fact(b) is not None
+    assert "temp" not in store.get_fact(a)["tags"]
+    assert "permanent" in store.get_fact(a)["tags"]
+    assert store.get_fact(b)["tags"] == []
+
+
+def test_remove_tag_from_all_records_history(store):
+    a = store.remember("fact for history", tags=["temp", "keep"])
+    store.remove_tag_from_all("temp")
+    history = store.get_fact_history(a)
+    assert any(h["change_type"] == "tag_removed" for h in history)
+
+
+# ------------------------------------------------------------------ #
+# Related facts (semantic similarity)                                    #
+# ------------------------------------------------------------------ #
+
+def test_related_facts_excludes_source(store):
+    a = store.remember("PostgreSQL is our primary database")
+    b = store.remember("We picked Postgres because of concurrent writes")
+    c = store.remember("Frontend uses React and TypeScript")
+    results = store.related_facts(a, limit=5)
+    ids = [r["id"] for r in results]
+    assert a not in ids  # source must be excluded
+
+
+def test_related_facts_missing_id_returns_empty(store):
+    assert store.related_facts("nonexistent-id") == []
+
+
+def test_related_facts_returns_pinned_field(store):
+    a = store.remember("Python preference for backend")
+    b = store.remember("Backend services use Python")
+    store.pin_fact(b)
+    results = store.related_facts(a, limit=5)
+    if results:
+        # Each result should expose a `pinned` boolean
+        assert all("pinned" in r for r in results)

@@ -4,6 +4,32 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.15.0] — 2026-05-11
+
+### Added - Phase 15
+
+**`anamne related <id>`** - find semantically similar facts
+- `anamne related abc123 --limit 5`
+- Uses ChromaDB nearest-neighbor search on the source fact's text
+- Excludes the source fact from the results
+- Calling `related` "touches" the source for ACT-R activation tracking
+- Useful for finding hidden duplicates that exact-text dedupe misses
+
+**`anamne tag-rename <old> <new>`** - bulk rename a tag
+- `anamne tag-rename pyhton python` - fix typos across all facts
+- If a fact already has the new tag, the old tag is just dropped (no duplicate)
+- Records a `tag_renamed` row in fact history for every modified fact
+
+**`anamne tag-clear <tag>`** - strip a tag without deleting facts
+- Different from `forget-tag` (which deletes the facts themselves)
+- `anamne tag-clear deprecated --yes` - bulk-strip with no prompt
+- Records a `tag_removed` row in fact history
+
+### Tests
+- 80 tests, all passing (+8 covering related/rename/clear)
+
+---
+
 ## [0.14.0] — 2026-05-11
 
 ### Added - Phase 14

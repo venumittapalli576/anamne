@@ -210,12 +210,25 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 15 - Future ideas
+## What's Built (v0.15.0)
+
+| Feature | Status |
+|---|---|
+| `anamne related <id>` - semantic similarity neighbors of a fact | ✅ |
+| `anamne tag-rename <old> <new>` - bulk rename a tag across all facts | ✅ |
+| `anamne tag-clear <tag>` - strip a tag without deleting the facts | ✅ |
+| `tag_renamed` / `tag_removed` history rows | ✅ |
+| 80 tests, all passing | ✅ |
+
+---
+
+## Phase 16 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
+- **`anamne related --tag X`** - filter similarity neighbors by tag
 
 ---
 

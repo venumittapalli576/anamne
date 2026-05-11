@@ -2447,6 +2447,121 @@ def forget_tag(
 
 
 @app.command()
+def related(
+    memory_id: str = typer.Argument(..., help="Memory ID to find related facts for"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Max number of related facts"),
+) -> None:
+    """Find scratchpad facts most semantically similar to a given fact.
+
+    Uses ChromaDB embeddings to find neighbors. Useful for discovering hidden
+    clusters and duplicates that exact-text dedupe would miss.
+
+    Examples:
+      anamne related abc123
+      anamne related abc123 --limit 5
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    source = store.get_fact(memory_id)
+    if source is None:
+        console.print(f"[red]No fact found with id '{memory_id}'.[/red]")
+        raise typer.Exit(code=1)
+
+    results = store.related_facts(memory_id, limit=limit)
+    console.print()
+    console.print(f"  [dim]Source:[/dim] [cyan]{source['fact']}[/cyan]")
+    console.print()
+    if not results:
+        console.print("  [dim]No related facts found.[/dim]\n")
+        return
+
+    console.print(f"  [bold]Top {len(results)} related fact(s):[/bold]\n")
+    for f in results:
+        pin = " [yellow]*[/yellow]" if f.get("pinned") else ""
+        tags = ", ".join(f["tags"]) if f["tags"] else "-"
+        console.print(f"  [dim]{f['id']}[/dim]{pin}  {f['fact'][:80]}")
+        console.print(f"      [dim]tags:[/dim] {tags}")
+    console.print()
+    # Touch the source so frequent "related" lookups boost its activation
+    try:
+        store.touch_facts([memory_id])
+    except Exception:
+        pass
+
+
+@app.command(name="tag-rename")
+def tag_rename(
+    old: str = typer.Argument(..., help="Existing tag to rename"),
+    new: str = typer.Argument(..., help="New tag name"),
+) -> None:
+    """Rename a tag across every scratchpad fact in one step.
+
+    If a fact already carries the new tag, the old tag is just dropped.
+    A history row is recorded for every modified fact.
+
+    Examples:
+      anamne tag-rename pyhton python
+      anamne tag-rename backend services
+    """
+    from anamne.store.graph import DecisionStore
+
+    if not old.strip() or not new.strip():
+        console.print("[red]Both old and new tag names are required.[/red]")
+        raise typer.Exit(code=1)
+    if old == new:
+        console.print("[yellow]Old and new tag are identical. Nothing to do.[/yellow]")
+        return
+
+    store = DecisionStore()
+    affected = store.rename_tag(old.strip(), new.strip())
+    if affected == 0:
+        console.print(f"\n  [dim]No facts had tag '[cyan]{old}[/cyan]'. Nothing changed.[/dim]\n")
+        return
+    console.print(
+        f"\n  [green]Renamed tag '[cyan]{old}[/cyan]' -> "
+        f"'[cyan]{new}[/cyan]' on {affected} fact(s).[/green]\n"
+    )
+
+
+@app.command(name="tag-clear")
+def tag_clear(
+    tag: str = typer.Argument(..., help="Tag to remove from all facts"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Remove a tag from every fact that has it, keeping the facts intact.
+
+    Unlike `forget-tag` (which deletes the facts themselves), this command
+    only strips the tag and preserves all fact content.
+
+    Examples:
+      anamne tag-clear deprecated
+      anamne tag-clear web-import --yes
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    facts = store.list_facts(limit=10_000, tags=[tag])
+    if not facts:
+        console.print(f"\n  [dim]No facts have tag '[cyan]{tag}[/cyan]'.[/dim]\n")
+        return
+
+    if not yes:
+        console.print(
+            f"\n  [yellow]About to strip tag '[cyan]{tag}[/cyan]' "
+            f"from {len(facts)} fact(s) (facts will be kept).[/yellow]\n"
+        )
+        if not typer.confirm("Proceed?", default=False):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    affected = store.remove_tag_from_all(tag)
+    console.print(
+        f"\n  [green]Removed tag '[cyan]{tag}[/cyan]' from {affected} fact(s).[/green]\n"
+    )
+
+
+@app.command()
 def doctor() -> None:
     """Diagnose common ANAMNE problems and report the health of your installation.
 

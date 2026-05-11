@@ -196,6 +196,17 @@ anamne unpin <memory-id>    # remove protection
 # Apply a tag to multiple facts at once (useful after an import batch)
 anamne bulk-tag architecture abc123 def456 ghi789
 
+# Find facts semantically similar to a given fact (ChromaDB neighbors)
+anamne related <memory-id>
+anamne related <memory-id> --limit 5
+
+# Rename a tag across every fact (e.g. fix typos)
+anamne tag-rename pyhton python
+
+# Strip a tag from all facts WITHOUT deleting the facts
+anamne tag-clear deprecated
+anamne tag-clear web-import --yes
+
 # Delete a specific fact
 anamne forget <memory-id>
 ```

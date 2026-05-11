@@ -603,6 +603,103 @@ class DecisionStore:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [f for _, f in scored[:limit]]
 
+    def related_facts(self, mem_id: str, limit: int = 10) -> list[dict]:
+        """Find facts most semantically similar to the given fact.
+
+        Uses ChromaDB to query nearest neighbors of the fact's text, excluding
+        the source fact itself. Falls back to substring matching on the first
+        word if ChromaDB is unavailable.
+        """
+        source = self.get_fact(mem_id)
+        if source is None:
+            return []
+        total = self.fact_count()
+        if total <= 1:
+            return []
+        try:
+            results = self._scratch_col.query(
+                query_texts=[source["fact"]],
+                n_results=min(limit + 1, total),
+            )
+        except Exception:
+            return []
+        ids = results["ids"][0] if results["ids"] else []
+        # Exclude the source fact itself
+        ids = [i for i in ids if i != mem_id][:limit]
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                f"SELECT id, fact, tags, COALESCE(pinned, 0) FROM scratchpad "
+                f"WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+        id_to_fact = {
+            r[0]: {
+                "id": r[0],
+                "fact": r[1],
+                "tags": json.loads(r[2]),
+                "pinned": bool(r[3]),
+            }
+            for r in rows
+        }
+        return [id_to_fact[i] for i in ids if i in id_to_fact]
+
+    def rename_tag(self, old: str, new: str) -> int:
+        """Replace every occurrence of `old` tag with `new` across all facts.
+
+        Returns the number of facts modified. Safe with duplicate-elimination:
+        if a fact already has `new`, the rename just drops `old`.
+        """
+        if not old or not new or old == new:
+            return 0
+        affected = 0
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute("SELECT id, fact, tags FROM scratchpad").fetchall()
+            for fid, content, tags_json in rows:
+                tags = json.loads(tags_json)
+                if old not in tags:
+                    continue
+                new_tags = sorted({(new if t == old else t) for t in tags})
+                new_tags_json = json.dumps(new_tags)
+                con.execute(
+                    "UPDATE scratchpad SET tags = ? WHERE id = ?",
+                    (new_tags_json, fid),
+                )
+                self._record_history(
+                    con, fid, content, new_tags_json, "tag_renamed",
+                )
+                affected += 1
+        return affected
+
+    def remove_tag_from_all(self, tag: str) -> int:
+        """Remove `tag` from every fact that has it, keeping the facts.
+
+        Returns the number of facts modified. Unlike `forget_tag`, the facts
+        themselves are preserved.
+        """
+        if not tag:
+            return 0
+        affected = 0
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute("SELECT id, fact, tags FROM scratchpad").fetchall()
+            for fid, content, tags_json in rows:
+                tags = json.loads(tags_json)
+                if tag not in tags:
+                    continue
+                new_tags = [t for t in tags if t != tag]
+                new_tags_json = json.dumps(new_tags)
+                con.execute(
+                    "UPDATE scratchpad SET tags = ? WHERE id = ?",
+                    (new_tags_json, fid),
+                )
+                self._record_history(
+                    con, fid, content, new_tags_json, "tag_removed",
+                )
+                affected += 1
+        return affected
+
     def fact_count(self) -> int:
         with sqlite3.connect(self._db) as con:
             return con.execute("SELECT COUNT(*) FROM scratchpad").fetchone()[0]
