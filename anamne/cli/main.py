@@ -1073,6 +1073,9 @@ def facts(
     from_date: Optional[str] = typer.Option(
         None, "--from", metavar="YYYY-MM-DD", help="Only facts created on or after this date"
     ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit machine-readable JSON instead of pretty text"
+    ),
     to_date: Optional[str] = typer.Option(
         None, "--to", metavar="YYYY-MM-DD", help="Only facts created on or before this date"
     ),
@@ -1110,6 +1113,10 @@ def facts(
     elif sort == "created":
         rows = sorted(rows, key=lambda f: f.get("created_at") or "", reverse=True)
     rows = rows[:limit]
+    if as_json:
+        # Emit a stable JSON shape - useful for piping into jq or shell scripts
+        console.print(json.dumps(rows, indent=2, default=str))
+        return
     if not rows:
         if pinned_only:
             console.print("[dim]No pinned facts. Use [bold]anamne pin <id>[/bold] to protect a fact.[/dim]")
@@ -2604,6 +2611,97 @@ def tags(
     console.print()
 
 
+@app.command(name="suggest-pins")
+def suggest_pins(
+    candidates: int = typer.Option(20, "--candidates", "-n",
+                                   help="How many top-activation facts to consider"),
+    apply: bool = typer.Option(False, "--apply", help="Pin the suggestions automatically"),
+) -> None:
+    """Ask the LLM which of your most-accessed facts deserve to be pinned.
+
+    Workflow:
+      1. Pulls the top-N unpinned facts by ACT-R activation.
+      2. Asks the LLM to pick the ones that look like durable preferences,
+         architecture decisions, or constraints (vs. transient context).
+      3. Prints the suggested ids. With --apply, pins them in place.
+
+    Falls back to the top-activation list verbatim when no API key is set.
+
+    Examples:
+      anamne suggest-pins
+      anamne suggest-pins --candidates 30
+      anamne suggest-pins --apply
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    all_facts = store.list_facts(limit=10_000)
+    unpinned = [f for f in all_facts if not f.get("pinned")]
+    if not unpinned:
+        console.print("\n  [dim]Every fact is already pinned (or scratchpad is empty).[/dim]\n")
+        return
+
+    scored = sorted(
+        ((store.activation_score(f["id"]), f) for f in unpinned),
+        key=lambda x: x[0], reverse=True,
+    )
+    pool = [f for _, f in scored[:candidates]]
+
+    fact_lines = "\n".join(
+        f"- {f['id']}: {f['fact']} (tags: {', '.join(f['tags']) or 'none'})"
+        for f in pool
+    )
+
+    suggested_ids: list[str] = []
+    try:
+        from anamne.llm import LLMClient
+        client = LLMClient()
+        prompt = (
+            "Below are scratchpad facts the user accesses often. Which of them "
+            "look like DURABLE personal preferences, architecture decisions, or "
+            "long-lived constraints worth protecting from auto-consolidation? "
+            "Skip transient notes, journal-style entries, and one-off tasks.\n\n"
+            "Reply with a comma-separated list of fact ids ONLY (no prose, no "
+            "bullets). If none qualify, reply with NONE.\n\n"
+            f"FACTS:\n{fact_lines}\n\nIDS:"
+        )
+        raw = client.complete(prompt, max_tokens=200).text.strip()
+        if raw.upper() != "NONE":
+            for tok in raw.replace(",", " ").split():
+                tok = tok.strip().strip(",.;:")
+                if tok and tok != "NONE" and any(p["id"] == tok for p in pool):
+                    suggested_ids.append(tok)
+    except Exception as e:
+        console.print(f"  [yellow]LLM unavailable ({e}); falling back to top "
+                      "activation.[/yellow]\n")
+        suggested_ids = [f["id"] for f in pool[:5]]
+
+    if not suggested_ids:
+        console.print("\n  [dim]No pin suggestions from the LLM.[/dim]\n")
+        return
+
+    console.print(f"\n  [bold]Suggested pins ({len(suggested_ids)}):[/bold]\n")
+    for fid in suggested_ids:
+        match = next((p for p in pool if p["id"] == fid), None)
+        if match:
+            tags = ", ".join(match["tags"]) if match["tags"] else "-"
+            console.print(f"  [cyan]{fid}[/cyan]  {match['fact']}")
+            console.print(f"      [dim]tags:[/dim] {tags}")
+    console.print()
+
+    if apply:
+        applied = 0
+        for fid in suggested_ids:
+            try:
+                if store.pin_fact(fid):
+                    applied += 1
+            except Exception:
+                pass
+        console.print(f"  [green]Pinned {applied} fact(s).[/green]\n")
+    else:
+        console.print("  [dim]Run again with [bold]--apply[/bold] to pin these.[/dim]\n")
+
+
 @app.command()
 def similar(
     text: str = typer.Argument(..., help="Free-text query"),
@@ -2717,10 +2815,10 @@ def profile() -> None:
             "below; do not invent details. 3-5 short paragraphs.\n\n"
             f"FACTS:\n{fact_lines}\n\nPROFILE:"
         )
-        result = client.complete(prompt, max_tokens=900)
+        result = client.complete(prompt, max_tokens=900).text.strip()
         console.print("\n  [bold]Profile[/bold]  "
                       f"[dim](from {len(profile_facts)} facts)[/dim]\n")
-        console.print(result.strip())
+        console.print(result)
         console.print()
     except Exception as e:
         console.print(
@@ -2735,6 +2833,7 @@ def profile() -> None:
 def related(
     memory_id: str = typer.Argument(..., help="Memory ID to find related facts for"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max number of related facts"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter neighbors by tag"),
 ) -> None:
     """Find scratchpad facts most semantically similar to a given fact.
 
@@ -2744,6 +2843,7 @@ def related(
     Examples:
       anamne related abc123
       anamne related abc123 --limit 5
+      anamne related abc123 --tag python   # only neighbors with the 'python' tag
     """
     from anamne.store.graph import DecisionStore
 
@@ -2753,7 +2853,13 @@ def related(
         console.print(f"[red]No fact found with id '{memory_id}'.[/red]")
         raise typer.Exit(code=1)
 
-    results = store.related_facts(memory_id, limit=limit)
+    # Over-fetch when tag-filtering so we still hit `limit` after filter
+    fetch_limit = limit * 3 if tag else limit
+    results = store.related_facts(memory_id, limit=fetch_limit)
+    if tag:
+        tag_set = set(tag)
+        results = [r for r in results if tag_set.intersection(r.get("tags", []))]
+    results = results[:limit]
     console.print()
     console.print(f"  [dim]Source:[/dim] [cyan]{source['fact']}[/cyan]")
     console.print()

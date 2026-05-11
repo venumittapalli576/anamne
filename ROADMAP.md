@@ -245,14 +245,25 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 18 - Future ideas
+## What's Built (v0.18.0)
+
+| Feature | Status |
+|---|---|
+| `anamne suggest-pins` - LLM picks which top-activation facts to pin | ✅ |
+| `anamne suggest-pins --apply` - auto-pin the suggestions | ✅ |
+| `anamne related --tag X` - tag-filtered semantic neighbors | ✅ |
+| `anamne facts --json` - machine-readable JSON output | ✅ |
+| Fix `profile` to unwrap `LLMResponse.text` | ✅ |
+
+---
+
+## Phase 19 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne related --tag X`** - filter similarity neighbors by tag
-- **`anamne profile --refresh-pins`** - LLM suggests facts to pin
+- **`anamne stats --json`** - machine-readable analytics
 
 ---
 

@@ -4,6 +4,35 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.18.0] — 2026-05-11
+
+### Added - Phase 18
+
+**`anamne suggest-pins`** - LLM-curated pin suggestions
+- Pulls top-N unpinned facts by ACT-R activation (default 20)
+- Asks the LLM to pick the ones that look like durable preferences /
+  architecture decisions / long-lived constraints
+- `--apply` pins the suggestions automatically; otherwise prints only
+- Falls back to "top-5 by activation" when no API key is configured
+
+**`anamne related <id> --tag X`** - tag-filtered neighbors
+- Restrict semantic neighbors to those carrying a specific tag (repeatable)
+- Useful when you want "Python-flavored neighbors of this fact"
+
+**`anamne facts --json`** - machine-readable output
+- Emits the same fact rows as JSON instead of pretty text
+- Composes with all existing filters (`--tag`, `--pinned`, `--from/--to`, `--sort`)
+- Pipe-friendly: `anamne facts --json | jq '.[].id'`
+
+### Fixed
+- `anamne profile` now correctly unwraps `LLMResponse.text` instead of calling
+  `.strip()` on the response object
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.17.0] — 2026-05-11
 
 ### Added - Phase 17

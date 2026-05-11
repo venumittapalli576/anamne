@@ -160,6 +160,7 @@ anamne facts --tag python --limit 10
 anamne facts --pinned               # only pinned facts
 anamne facts --from 2026-05-01 --to 2026-05-11   # date-range filter
 anamne facts --sort activation      # sort by ACT-R score
+anamne facts --json                 # machine-readable JSON output
 
 # Show most recently added facts (quick journal-style review)
 anamne recent
@@ -204,12 +205,17 @@ anamne tag <memory-id> --set python --set testing   # replaces all tags
 anamne pin <memory-id>
 anamne unpin <memory-id>    # remove protection
 
+# Ask the LLM which top-accessed facts deserve to be pinned
+anamne suggest-pins                # preview suggestions
+anamne suggest-pins --apply        # apply them automatically
+
 # Apply a tag to multiple facts at once (useful after an import batch)
 anamne bulk-tag architecture abc123 def456 ghi789
 
 # Find facts semantically similar to a given fact (ChromaDB neighbors)
 anamne related <memory-id>
 anamne related <memory-id> --limit 5
+anamne related <memory-id> --tag python   # tag-filtered neighbors
 
 # Rename a tag across every fact (e.g. fix typos)
 anamne tag-rename pyhton python
