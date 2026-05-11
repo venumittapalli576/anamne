@@ -174,12 +174,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 12 - Future ideas
+## What's Built (v0.12.0)
+
+| Feature | Status |
+|---|---|
+| `anamne recap` - LLM narrative of today's memory activity | ✅ |
+| `--days N` lookback, `--no-llm` raw dump mode | ✅ |
+| `anamne export --tag <tag>` - tag-scoped export | ✅ |
+| `anamne facts --sort activation\|created` | ✅ |
+
+---
+
+## Phase 13 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
-- **`anamne recap`** - LLM summary of everything added/retrieved today
+- **`anamne ask --stream`** - streaming output for long recall answers
 
 ---
 

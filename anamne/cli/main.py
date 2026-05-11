@@ -29,6 +29,7 @@ Working memory (session-scoped):
 
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
+  recap             - LLM narrative of today's memory activity (--days, --no-llm)
   pin               - protect a fact from auto-consolidation
   unpin             - remove pin from a fact
   reminder          - schedule a working-memory note to expire at a given time
@@ -918,20 +919,35 @@ def facts(
     limit: int = typer.Option(20, "--limit", "-n", help="How many to list"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag (repeatable)"),
     pinned_only: bool = typer.Option(False, "--pinned", help="Only show pinned facts"),
+    sort: str = typer.Option(
+        "recency", "--sort", "-s",
+        help="Sort order: recency (default) | activation | created"
+    ),
 ) -> None:
     """List facts in scratchpad memory, optionally filtered by tag or pin status.
+
+    Sort options:
+      recency    - most recently *used* first (default, ACT-R friendly)
+      activation - highest ACT-R activation score first (requires retrievals)
+      created    - most recently *created* first (like `anamne recent`)
 
     Examples:
       anamne facts
       anamne facts --tag python --limit 10
-      anamne facts --pinned           # only pinned facts
+      anamne facts --pinned
+      anamne facts --sort activation
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
-    rows = store.list_facts(limit=limit * 3 if pinned_only else limit, tags=tag or None)
+    fetch_limit = limit * 3 if (pinned_only or sort == "activation") else limit
+    rows = store.list_facts(limit=fetch_limit, tags=tag or None)
     if pinned_only:
         rows = [f for f in rows if f.get("pinned")]
-        rows = rows[:limit]
+    if sort == "activation":
+        rows = sorted(rows, key=lambda f: store.activation_score(f["id"]), reverse=True)
+    elif sort == "created":
+        rows = sorted(rows, key=lambda f: f.get("created_at") or "", reverse=True)
+    rows = rows[:limit]
     if not rows:
         if pinned_only:
             console.print("[dim]No pinned facts. Use [bold]anamne pin <id>[/bold] to protect a fact.[/dim]")
@@ -1029,6 +1045,144 @@ def bulk_tag(
         console.print(f"  [green]Tagged {ok_count} fact(s)[/green] with '[cyan]{tag}[/cyan]'")
     if fail_count:
         console.print(f"  [yellow]{fail_count} ID(s) not found[/yellow]")
+
+
+@app.command()
+def recap(
+    days: int = typer.Option(1, "--days", "-d",
+                              help="Look back N days (default: 1 = today only)"),
+    no_llm: bool = typer.Option(False, "--no-llm",
+                                 help="Skip LLM summary, just print raw activity"),
+) -> None:
+    """Generate an LLM summary of your memory activity for today (or recent days).
+
+    Pulls together:
+      - Journal entries added in the period
+      - All facts created or updated in the period
+      - Working memory notes (active right now)
+      - Facts retrieved (accessed) in the period (from retrieval_log)
+
+    Then asks the LLM to write a human-readable summary of what you worked on,
+    what you decided, and what facts were reinforced.
+
+    Use --no-llm to print raw activity without calling the LLM.
+
+    Examples:
+      anamne recap
+      anamne recap --days 7      # recap the last week
+      anamne recap --no-llm      # raw dump, no API call
+    """
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    with sqlite3.connect(store._db) as con:
+        # Facts created in period
+        new_facts = con.execute(
+            "SELECT id, fact, tags FROM scratchpad WHERE created_at >= ?",
+            (cutoff,)
+        ).fetchall()
+
+        # Facts retrieved in period (from retrieval_log)
+        retrieved_ids = con.execute(
+            "SELECT DISTINCT fact_id FROM retrieval_log WHERE retrieved_at >= ?",
+            (cutoff,)
+        ).fetchall()
+        retrieved_ids_set = {r[0] for r in retrieved_ids}
+
+        # All those facts' content
+        if retrieved_ids_set:
+            placeholders = ",".join("?" * len(retrieved_ids_set))
+            retrieved_facts = con.execute(
+                f"SELECT id, fact, tags FROM scratchpad WHERE id IN ({placeholders})",
+                list(retrieved_ids_set)
+            ).fetchall()
+        else:
+            retrieved_facts = []
+
+    import json as _json
+    new_created = [
+        {"id": r[0], "fact": r[1], "tags": _json.loads(r[2])} for r in new_facts
+    ]
+    retrieved = [
+        {"id": r[0], "fact": r[1], "tags": _json.loads(r[2])} for r in retrieved_facts
+        if r[0] not in {f["id"] for f in new_created}  # avoid duplication
+    ]
+    working = store.working_active()
+
+    period_str = f"today ({today})" if days == 1 else f"the last {days} days"
+
+    if no_llm:
+        console.print(f"\n[bold]Memory activity for {period_str}[/bold]\n")
+        if new_created:
+            console.print(f"[green]New facts ({len(new_created)}):[/green]")
+            for f in new_created:
+                console.print(f"  [dim]{f['id']}[/dim]  {f['fact'][:80]}")
+            console.print()
+        if retrieved:
+            console.print(f"[cyan]Accessed facts ({len(retrieved)}):[/cyan]")
+            for f in retrieved:
+                console.print(f"  [dim]{f['id']}[/dim]  {f['fact'][:80]}")
+            console.print()
+        if working:
+            console.print(f"[yellow]Active working memory ({len(working)}):[/yellow]")
+            for w in working:
+                console.print(f"  {w['note'][:80]}")
+            console.print()
+        if not new_created and not retrieved and not working:
+            console.print(f"[dim]No memory activity in {period_str}.[/dim]")
+        return
+
+    # Need LLM
+    from anamne.config import get_settings
+    cfg = get_settings()
+    if not (cfg.anthropic_api_key or cfg.gemini_api_key):
+        console.print("[red]No API key configured.[/red] "
+                      "Use --no-llm for raw output, or run anamne init.")
+        raise typer.Exit(1)
+
+    if not new_created and not retrieved and not working:
+        console.print(f"\n[dim]No memory activity in {period_str} to recap.[/dim]\n")
+        return
+
+    # Build prompt
+    sections = []
+    if new_created:
+        lines = "\n".join(f"- [{f['id']}] {f['fact']}" for f in new_created[:30])
+        sections.append(f"FACTS ADDED:\n{lines}")
+    if retrieved:
+        lines = "\n".join(f"- [{f['id']}] {f['fact']}" for f in retrieved[:20])
+        sections.append(f"FACTS ACCESSED (read or surfaced):\n{lines}")
+    if working:
+        lines = "\n".join(f"- {w['note']}" for w in working[:10])
+        sections.append(f"CURRENT WORKING MEMORY:\n{lines}")
+
+    prompt = (
+        f"You are summarising a person's memory system activity for {period_str}.\n\n"
+        + "\n\n".join(sections)
+        + "\n\nWrite a short, human-readable recap (3-6 sentences) covering: "
+        "what the person worked on or decided, what new context they captured, "
+        "and any active session focus. Be specific. Use the actual fact content."
+    )
+
+    from anamne.llm import LLMClient
+    llm = LLMClient()
+    console.print()
+    console.print(Panel(
+        f"[bold]Recap for {period_str}[/bold]\n\n"
+        "[dim]Summarising {nc} new + {nr} accessed facts + {nw} working notes...[/dim]".format(
+            nc=len(new_created), nr=len(retrieved), nw=len(working)
+        ),
+        border_style="cyan",
+    ))
+    console.print()
+    result = llm.complete(prompt, max_tokens=400)
+    console.print(result.text.strip())
+    console.print()
 
 
 @app.command()
@@ -1538,6 +1692,10 @@ def export(
     no_episodic: bool = typer.Option(False, "--no-episodic", help="Skip episodic memory"),
     no_facts: bool = typer.Option(False, "--no-facts", help="Skip scratchpad facts"),
     no_working: bool = typer.Option(False, "--no-working", help="Skip working memory"),
+    tag: list[str] = typer.Option(
+        [], "--tag", "-t",
+        help="Export only scratchpad facts with this tag (repeatable); skips episodic + working"
+    ),
 ) -> None:
     """Export all memories to JSON or Markdown for backup or migration.
 
@@ -1545,12 +1703,18 @@ def export(
       anamne export --output backup.json
       anamne export --format markdown --output memories.md
       anamne export --no-episodic --output facts-only.json
+      anamne export --tag python --output python-facts.json
     """
     import json as _json
     from datetime import date
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
+
+    # --tag implies facts-only (skip episodic and working)
+    if tag:
+        no_episodic = True
+        no_working = True
 
     if fmt == "markdown":
         lines: list[str] = [
@@ -1559,11 +1723,13 @@ def export(
         ]
 
         if not no_facts:
-            facts = store.list_facts(limit=10_000)
-            lines.append(f"## Scratchpad Facts ({len(facts)})\n")
+            facts = store.list_facts(limit=10_000, tags=tag or None)
+            tag_header = f" (tag: {', '.join(tag)})" if tag else ""
+            lines.append(f"## Scratchpad Facts ({len(facts)}{tag_header})\n")
             for f in facts:
                 tag_str = f" _{', '.join(f['tags'])}_" if f.get("tags") else ""
-                lines.append(f"- **{f['id']}**: {f['fact']}{tag_str}")
+                pin_str = " [PINNED]" if f.get("pinned") else ""
+                lines.append(f"- **{f['id']}**{pin_str}: {f['fact']}{tag_str}")
             lines.append("")
 
         if not no_working:
@@ -1592,7 +1758,7 @@ def export(
         payload: dict = {"exported_at": date.today().isoformat(), "version": __version__}
 
         if not no_facts:
-            payload["scratchpad_facts"] = store.list_facts(limit=10_000)
+            payload["scratchpad_facts"] = store.list_facts(limit=10_000, tags=tag or None)
 
         if not no_working:
             payload["working_memory"] = store.working_active()

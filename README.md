@@ -223,9 +223,15 @@ anamne watch --interval 1800   # every 30 minutes
 anamne watch-repos ./my-project
 anamne watch-repos ./frontend ./backend --interval 120   # check every 2 min
 
+# Daily/weekly memory recap — LLM summary of activity
+anamne recap                       # what happened today
+anamne recap --days 7              # last week
+anamne recap --no-llm              # raw dump without LLM
+
 # Export all memories to JSON or Markdown (for backup / migration)
 anamne export --output backup.json
 anamne export --format markdown --output memories.md
+anamne export --tag python --output python-facts.json  # tag-scoped
 
 # Bulk-delete all facts with a specific tag
 anamne forget-tag web-import             # preview list then confirm

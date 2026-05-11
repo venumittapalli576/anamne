@@ -4,6 +4,33 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.12.0] — 2026-05-11
+
+### Added - Phase 12
+
+**`anamne recap`** - LLM narrative of today's memory activity
+- `anamne recap` - one-paragraph summary of what you worked on today
+- `anamne recap --days 7` - recap the last week
+- `anamne recap --no-llm` - raw dump of new/accessed/working facts without LLM call
+- Pulls: facts created today, facts retrieved today (from retrieval_log), active working memory
+- LLM writes a human-readable narrative covering decisions, captured context, session focus
+
+**`anamne export --tag <tag>`** - tag-scoped export
+- `anamne export --tag python --output python-facts.json`
+- Exports only scratchpad facts matching the given tag(s)
+- Automatically sets --no-episodic --no-working (tag filter is scratchpad-only)
+- Pinned facts get `[PINNED]` marker in Markdown export
+
+**`anamne facts --sort activation|created`**
+- `--sort activation` - sort by ACT-R score, most-active first
+- `--sort created` - sort by creation date, newest first (same as `anamne recent`)
+- Default remains `recency` (last-used-at)
+
+### Tests
+- 72 tests, all passing
+
+---
+
 ## [0.11.0] — 2026-05-11
 
 ### Added - Phase 11
