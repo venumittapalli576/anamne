@@ -327,7 +327,7 @@ function filterFacts() {
   tbody.innerHTML = rows.map(f => `
     <tr>
       <td class="id">${f.id}</td>
-      <td class="fact-text">${escHtml(f.fact)}</td>
+      <td class="fact-text">${f.pinned ? '<span title="Pinned - protected from auto-consolidation" style="color:var(--green);margin-right:4px">&#128204;</span>' : ''}${escHtml(f.fact)}</td>
       <td>${tagHtml(f.tags)}</td>
       <td style="color:var(--muted);font-size:12px">${fmtDate(f.created_at)}</td>
       <td class="act">${f.activation > 0 ? f.activation.toFixed(3) : '<span style="color:var(--muted)">—</span>'}</td>

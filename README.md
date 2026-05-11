@@ -175,6 +175,10 @@ anamne tag <memory-id> --add python --add backend
 anamne tag <memory-id> --remove deprecated
 anamne tag <memory-id> --set python --set testing   # replaces all tags
 
+# Pin a fact - protect it from auto-consolidation forever
+anamne pin <memory-id>
+anamne unpin <memory-id>    # remove protection
+
 # Delete a specific fact
 anamne forget <memory-id>
 ```
@@ -271,7 +275,7 @@ anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 
 ## MCP Integration
 
-ANAMNE exposes **15 tools** through the MCP protocol, giving any compatible AI assistant
+ANAMNE exposes **18 tools** through the MCP protocol, giving any compatible AI assistant
 direct access to your memory layers:
 
 | Tool | Layer | What it does |
@@ -289,8 +293,11 @@ direct access to your memory layers:
 | `get_fact_history` | Scratchpad | Full change log for a fact |
 | `search_facts` | Scratchpad | Hybrid ranked search (substring + semantic) |
 | `consolidate_facts` | Scratchpad | Merge redundant facts (ACC-style) |
+| `pin_fact` | Scratchpad | Protect a fact from auto-consolidation |
+| `unpin_fact` | Scratchpad | Remove consolidation protection |
 | `working_memory_add` | Working | Add a session note (auto-expires) |
 | `working_memory_active` | Working | Get active session context |
+| `search_working_memory` | Working | Semantic search over session notes |
 
 ### Claude Code
 

@@ -27,6 +27,8 @@ Working memory (session-scoped):
 
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
+  pin               - protect a fact from auto-consolidation
+  unpin             - remove pin from a fact
   reminder          - schedule a working-memory note to expire at a given time
   forget-tag        - bulk-delete all facts carrying a specific tag
   clear             - wipe an entire memory layer (scratchpad|working|episodic|all)
@@ -624,6 +626,48 @@ def forget(
 
 
 @app.command()
+def pin(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to pin"),
+) -> None:
+    """Pin a fact so it is never touched by auto-consolidation.
+
+    Pinned facts are excluded from `anamne consolidate` and `anamne watch`.
+    Use this for critical facts that must never be merged, reworded, or deleted
+    automatically — architecture decisions, hard constraints, etc.
+
+    The pin can be removed with `anamne unpin <id>`.
+
+    Examples:
+      anamne pin abc123def456
+    """
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+    if store.pin_fact(memory_id):
+        console.print(f"[green]Pinned[/green] {memory_id}  "
+                      f"[dim](protected from auto-consolidation)[/dim]")
+    else:
+        console.print(f"[yellow]No fact with id {memory_id}[/yellow]")
+
+
+@app.command()
+def unpin(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to unpin"),
+) -> None:
+    """Remove the pin from a fact, allowing auto-consolidation to consider it again.
+
+    Examples:
+      anamne unpin abc123def456
+    """
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+    if store.unpin_fact(memory_id):
+        console.print(f"[dim]Unpinned[/dim] {memory_id}  "
+                      f"[dim](fact is now eligible for auto-consolidation)[/dim]")
+    else:
+        console.print(f"[yellow]No fact with id {memory_id}[/yellow]")
+
+
+@app.command()
 def info(
     memory_id: str = typer.Argument(..., help="Scratchpad fact ID to inspect"),
 ) -> None:
@@ -657,6 +701,11 @@ def info(
     table.add_row(
         "ACT-R activation",
         f"{fact['activation']:.4f}" if fact["activation"] else "0.0 (never retrieved)",
+    )
+    table.add_row(
+        "Pinned",
+        "[green]YES (protected from auto-consolidation)[/green]" if fact.get("pinned")
+        else "[dim]no[/dim]",
     )
 
     console.print()
@@ -879,7 +928,8 @@ def facts(
         return
     for f in rows:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
-        console.print(f"[cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+        pin_str = "  [green][pin][/green]" if f.get("pinned") else ""
+        console.print(f"[cyan]{f['id']}[/cyan]{pin_str}  {f['fact']}{tag_str}")
 
 
 @app.command()
@@ -1368,7 +1418,8 @@ def search(
     console.print(f"\n[bold]{len(results)} result(s) for '[cyan]{query}[/cyan]':[/bold]\n")
     for f in results:
         tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f.get("tags") else ""
-        console.print(f"  [cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+        pin_str = "  [green][pin][/green]" if f.get("pinned") else ""
+        console.print(f"  [cyan]{f['id']}[/cyan]{pin_str}  {f['fact']}{tag_str}")
     console.print()
 
 

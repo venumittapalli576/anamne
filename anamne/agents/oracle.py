@@ -198,7 +198,9 @@ class OracleAgent:
 
         If dry_run=True, returns the plan without writing to the store.
         """
-        all_facts = self._store.list_facts(limit=500)
+        all_facts_raw = self._store.list_facts(limit=500)
+        # Never auto-consolidate pinned facts
+        all_facts = [f for f in all_facts_raw if not f.get("pinned")]
         if len(all_facts) < min_cluster:
             return []
 

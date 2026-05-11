@@ -150,12 +150,26 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 10 - Future ideas
+## What's Built (v0.10.0)
+
+| Feature | Status |
+|---|---|
+| `anamne pin <id>` - protect fact from auto-consolidation | ✅ |
+| `anamne unpin <id>` - remove protection | ✅ |
+| `pinned` column in scratchpad table (safe ALTER TABLE migration) | ✅ |
+| `pin_fact` / `unpin_fact` MCP tools (18 total) | ✅ |
+| Consolidation skips pinned facts | ✅ |
+| Pin indicator in `facts`, `search`, `info`, and web UI | ✅ |
+| 72 tests, all passing (+6 pin/unpin coverage) | ✅ |
+
+---
+
+## Phase 11 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne pin <id>`** - mark a fact as permanent (never auto-consolidated away)
-- **`anamne search --tag`** - filter search results by tag
+- **`anamne search --pinned`** - list only pinned facts
+- **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 
 ---
 

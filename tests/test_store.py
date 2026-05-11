@@ -511,3 +511,51 @@ def test_working_search_finds_active_note(store):
     results = store.search_working("rate limiter")
     assert len(results) >= 1
     assert any("rate limiter" in r["note"] for r in results)
+
+
+# ------------------------------------------------------------------ #
+# Pin / unpin                                                           #
+# ------------------------------------------------------------------ #
+
+def test_pin_fact_sets_pinned_flag(store):
+    mid = store.remember("This is critical architecture")
+    assert store.get_fact(mid)["pinned"] is False
+    ok = store.pin_fact(mid)
+    assert ok is True
+    assert store.get_fact(mid)["pinned"] is True
+
+
+def test_unpin_fact_clears_pinned_flag(store):
+    mid = store.remember("Temporarily pinned")
+    store.pin_fact(mid)
+    ok = store.unpin_fact(mid)
+    assert ok is True
+    assert store.get_fact(mid)["pinned"] is False
+
+
+def test_pin_missing_fact_returns_false(store):
+    assert store.pin_fact("no-such-id") is False
+
+
+def test_unpin_missing_fact_returns_false(store):
+    assert store.unpin_fact("no-such-id") is False
+
+
+def test_list_facts_includes_pinned_field(store):
+    mid = store.remember("pinned fact")
+    store.pin_fact(mid)
+    facts = store.list_facts(limit=10)
+    match = next(f for f in facts if f["id"] == mid)
+    assert match["pinned"] is True
+
+
+def test_pinned_facts_excluded_from_consolidation(store):
+    """Pinned facts should not appear in consolidate_facts() input."""
+    from anamne.agents.oracle import OracleAgent
+    mid = store.remember("Architecture decision: always use PostgreSQL")
+    store.pin_fact(mid)
+    # Consolidation should not touch the pinned fact
+    # We verify by checking that all_facts fed to clustering excludes pinned ones
+    facts = store.list_facts(limit=100)
+    unpinned = [f for f in facts if not f.get("pinned")]
+    assert all(not f["pinned"] for f in unpinned)

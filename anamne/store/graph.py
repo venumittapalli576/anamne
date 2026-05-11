@@ -276,7 +276,8 @@ class DecisionStore:
         """List facts, optionally filtered by one or more tags."""
         with sqlite3.connect(self._db) as con:
             rows = con.execute(
-                "SELECT id, fact, tags, created_at, last_used_at, use_count "
+                "SELECT id, fact, tags, created_at, last_used_at, use_count, "
+                "COALESCE(pinned, 0) "
                 "FROM scratchpad ORDER BY last_used_at DESC LIMIT ?",
                 (limit * 3 if tags else limit,),
             ).fetchall()
@@ -284,6 +285,7 @@ class DecisionStore:
             {
                 "id": r[0], "fact": r[1], "tags": json.loads(r[2]),
                 "created_at": r[3], "last_used_at": r[4], "use_count": r[5],
+                "pinned": bool(r[6]),
             }
             for r in rows
         ]
@@ -296,7 +298,8 @@ class DecisionStore:
         """Return a single scratchpad fact by id, or None if not found."""
         with sqlite3.connect(self._db) as con:
             row = con.execute(
-                "SELECT id, fact, tags, created_at, last_used_at, use_count "
+                "SELECT id, fact, tags, created_at, last_used_at, use_count, "
+                "COALESCE(pinned, 0) "
                 "FROM scratchpad WHERE id = ?",
                 (mem_id,),
             ).fetchone()
@@ -305,6 +308,7 @@ class DecisionStore:
         return {
             "id": row[0], "fact": row[1], "tags": json.loads(row[2]),
             "created_at": row[3], "last_used_at": row[4], "use_count": row[5],
+            "pinned": bool(row[6]),
             "activation": self.activation_score(row[0]),
         }
 
@@ -439,6 +443,28 @@ class DecisionStore:
         except Exception:
             pass  # ChromaDB may not have it yet (pre-migration facts)
         return True
+
+    def pin_fact(self, mem_id: str) -> bool:
+        """Pin a scratchpad fact so it is never auto-consolidated.
+
+        Returns True if the fact was found and pinned, False if not found.
+        """
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "UPDATE scratchpad SET pinned = 1 WHERE id = ?", (mem_id,)
+            ).rowcount
+        return rows > 0
+
+    def unpin_fact(self, mem_id: str) -> bool:
+        """Remove the pin from a scratchpad fact.
+
+        Returns True if the fact was found and unpinned, False if not found.
+        """
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "UPDATE scratchpad SET pinned = 0 WHERE id = ?", (mem_id,)
+            ).rowcount
+        return rows > 0
 
     def get_fact_history(self, fact_id: str) -> list[dict]:
         """Return the full change history for a scratchpad fact, newest first."""
@@ -770,6 +796,13 @@ class DecisionStore:
     def _init_db(self) -> None:
         with sqlite3.connect(self._db) as con:
             con.executescript(_SCHEMA)
+            # Phase 10 migration: add pinned column if it doesn't exist yet
+            try:
+                con.execute(
+                    "ALTER TABLE scratchpad ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+                )
+            except Exception:
+                pass  # Column already exists — safe to ignore
 
     def _fetch_by_ids(self, ids: list[str]) -> list[Decision]:
         placeholders = ",".join("?" * len(ids))

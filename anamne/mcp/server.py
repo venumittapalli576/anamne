@@ -1,10 +1,11 @@
 ﻿"""
 ANAMNE MCP Server  - plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 16 memory tools covering all three LIGHT layers:
+Exposes 18 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
   Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
-              update_fact, get_fact_history, search_facts, consolidate_facts
+              update_fact, get_fact_history, search_facts, consolidate_facts,
+              pin_fact, unpin_fact
   Working   : working_memory_add, working_memory_active, search_working_memory
 """
 
@@ -267,6 +268,35 @@ def consolidate_facts(
             for m in merges
         ],
     }
+
+
+@mcp.tool()
+def pin_fact(memory_id: str) -> dict:
+    """Pin a scratchpad fact so it is never auto-consolidated.
+
+    Pinned facts are excluded from consolidate_facts() and the watch daemon.
+    Use this for critical, high-confidence facts that must never be merged
+    or reworded by the LLM — architecture decisions, hard constraints, etc.
+
+    Returns {id, pinned: true} on success or {error} if not found.
+    """
+    ok = _store.pin_fact(memory_id)
+    if not ok:
+        return {"error": f"No fact found with id: {memory_id}"}
+    return {"id": memory_id, "pinned": True}
+
+
+@mcp.tool()
+def unpin_fact(memory_id: str) -> dict:
+    """Remove the pin from a scratchpad fact.
+
+    After unpinning, the fact is eligible for auto-consolidation again.
+    Returns {id, pinned: false} on success or {error} if not found.
+    """
+    ok = _store.unpin_fact(memory_id)
+    if not ok:
+        return {"error": f"No fact found with id: {memory_id}"}
+    return {"id": memory_id, "pinned": False}
 
 
 def run() -> None:

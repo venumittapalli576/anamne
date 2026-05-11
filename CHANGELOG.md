@@ -4,6 +4,35 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.10.0] — 2026-05-11
+
+### Added - Phase 10
+
+**`anamne pin` / `anamne unpin`** - protect facts from auto-consolidation
+- `anamne pin <id>` marks a fact as permanent; it will never be touched by
+  `anamne consolidate`, `anamne watch`, or the `consolidate_facts` MCP tool
+- `anamne unpin <id>` removes the protection
+- `anamne info <id>` shows the pinned status
+- `anamne facts` and `anamne search` display `[pin]` indicator for pinned facts
+- Web UI: pinned facts show a 📌 icon in the Scratchpad table
+- Database migration: adds `pinned INTEGER NOT NULL DEFAULT 0` column to
+  the `scratchpad` table on first run (safe ALTER TABLE, existing data unaffected)
+
+**`pin_fact` / `unpin_fact` MCP tools** (18 tools total)
+- `pin_fact(memory_id)` / `unpin_fact(memory_id)` — callable from Claude/Cursor
+- Useful when an AI assistant identifies a key constraint it should preserve
+
+**`anamne consolidate` / watch daemon skip pinned facts**
+- `OracleAgent.consolidate_facts()` now filters out pinned facts before clustering
+- Pinned facts are invisible to the consolidation LLM
+
+### Tests
+- 72 tests (was 66), all passing
+- 7 new pin/unpin tests: pin sets flag, unpin clears it, missing IDs return False,
+  list_facts includes pinned field, pinned facts excluded from consolidation input
+
+---
+
 ## [0.9.0] — 2026-05-11
 
 ### Added - Phase 9
