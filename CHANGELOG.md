@@ -4,6 +4,36 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.13.0] — 2026-05-11
+
+### Added - Phase 13
+
+**`anamne recall --stream`** - streaming LLM output
+- `anamne recall "question" --stream` prints the Oracle answer token-by-token
+- Lower latency to first output vs. waiting for full response
+- New `OracleAgent.ask_stream()` method using `LLMClient.complete_stream()`
+- New `LLMClient.complete_stream()` generator: Anthropic `messages.stream()` +
+  Gemini `models.generate_content_stream()`
+
+**`anamne dedupe`** - exact-text duplicate detection (no LLM)
+- `anamne dedupe` shows exact-text duplicates (normalized, case-insensitive)
+- Keeps the oldest copy, proposes deleting the rest
+- `--yes` to auto-delete; `--min-length N` to skip very short facts
+- No API key needed — pure string matching
+
+**`anamne working --extend <id>:<minutes>`** - extend expiry of a working note
+- `anamne working --extend abc123:60` adds 60 minutes to the note's expiry
+- Extends from whichever is later: current expiry or now
+
+### Fixed
+- `test_activation_increases_with_retrieval`: was flaky due to sub-microsecond
+  timestamp resolution causing `t == 0`; fixed with explicit 10ms sleep
+
+### Tests
+- 72 tests, all passing (flaky test fix applied)
+
+---
+
 ## [0.12.0] — 2026-05-11
 
 ### Added - Phase 12

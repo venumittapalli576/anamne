@@ -30,6 +30,7 @@ Working memory (session-scoped):
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
   recap             - LLM narrative of today's memory activity (--days, --no-llm)
+  dedupe            - find and remove exact-text duplicate facts (no LLM required)
   pin               - protect a fact from auto-consolidation
   unpin             - remove pin from a fact
   reminder          - schedule a working-memory note to expire at a given time
@@ -588,8 +589,20 @@ def remember(
 @app.command()
 def recall(
     query: str = typer.Argument(..., help="What to recall from memory"),
+    stream: bool = typer.Option(
+        False, "--stream", "-s",
+        help="Stream the LLM answer token-by-token as it arrives"
+    ),
 ) -> None:
-    """Recall across episodic memory and scratchpad facts."""
+    """Recall across episodic memory and scratchpad facts.
+
+    With --stream, the LLM answer is printed character-by-character as it
+    arrives (lower latency to first token, useful for long answers).
+
+    Examples:
+      anamne recall "why did we switch databases?"
+      anamne recall "payment architecture" --stream
+    """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
@@ -607,7 +620,10 @@ def recall(
         from anamne.agents.oracle import OracleAgent
         console.print("\n[bold cyan]From episodic memory:[/bold cyan]")
         agent = OracleAgent(store=store)
-        agent.ask_pretty(query)
+        if stream:
+            agent.ask_stream(query)
+        else:
+            agent.ask_pretty(query)
     elif not facts:
         console.print(
             "\n[yellow]Nothing found.[/yellow] "
@@ -912,6 +928,78 @@ def consolidate(
         console.print(
             f"[green]Done.[/green] Replaced {replaced} facts with {len(merges)} merged fact(s)."
         )
+
+
+@app.command()
+def dedupe(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Delete duplicates automatically"),
+    min_length: int = typer.Option(
+        10, "--min-length",
+        help="Only consider facts longer than this many characters"
+    ),
+) -> None:
+    """Find and remove exact-text duplicate scratchpad facts (no LLM required).
+
+    Compares normalized fact text (stripped, lowercased) across all scratchpad
+    entries. When duplicates are found, keeps the oldest and removes the rest.
+
+    Unlike `anamne consolidate`, this is purely string-equality matching -
+    no LLM call, no API key needed. Run it first as a cheap dedup pass.
+
+    Examples:
+      anamne dedupe             # preview duplicates
+      anamne dedupe --yes       # delete automatically
+    """
+    import sqlite3
+    from collections import defaultdict
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    with sqlite3.connect(store._db) as con:
+        rows = con.execute(
+            "SELECT id, fact, created_at FROM scratchpad ORDER BY created_at ASC"
+        ).fetchall()
+
+    # Group by normalized text
+    groups: dict = defaultdict(list)
+    for fid, fact, created in rows:
+        if len(fact) >= min_length:
+            key = fact.strip().lower()
+            groups[key].append((fid, fact, created))
+
+    dupes = {k: v for k, v in groups.items() if len(v) > 1}
+
+    if not dupes:
+        console.print(f"[green]No exact duplicates found[/green] across {len(rows)} facts.")
+        return
+
+    total_to_delete = sum(len(v) - 1 for v in dupes.values())
+    console.print(f"\n  [yellow]Found {len(dupes)} duplicate group(s) "
+                  f"({total_to_delete} facts to remove):[/yellow]\n")
+
+    all_ids_to_delete: list[str] = []
+    for key, entries in dupes.items():
+        keeper = entries[0]  # oldest
+        to_delete = entries[1:]
+        console.print(f"  [dim]Keep:[/dim]   [{keeper[0]}] {keeper[1][:70]}")
+        for fid, fact, _ in to_delete:
+            console.print(f"  [red]Delete:[/red] [{fid}] {fact[:70]}")
+            all_ids_to_delete.append(fid)
+        console.print()
+
+    if not yes:
+        if not typer.confirm(
+            f"Delete {total_to_delete} duplicate fact(s)?", default=False
+        ):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    deleted = 0
+    for fid in all_ids_to_delete:
+        if store.forget_fact(fid):
+            deleted += 1
+
+    console.print(f"\n  [green]Deleted {deleted} duplicate fact(s).[/green]\n")
 
 
 @app.command()
@@ -2025,14 +2113,57 @@ def working(
     note: Optional[str] = typer.Argument(None, help="Note to add (omit to list)"),
     ttl: int = typer.Option(60, "--ttl", help="Minutes until auto-expire"),
     clear: bool = typer.Option(False, "--clear", help="Clear all working memory"),
+    extend: Optional[str] = typer.Option(
+        None, "--extend",
+        metavar="ID:MINUTES",
+        help="Extend expiry of an existing note: --extend <id>:<extra_minutes>"
+    ),
 ) -> None:
-    """Manage working memory (short-lived session context)."""
+    """Manage working memory (short-lived session context).
+
+    Examples:
+      anamne working "debugging the auth middleware"
+      anamne working                          # list active notes
+      anamne working --clear                  # wipe all
+      anamne working --extend abc123:60       # add 60 more minutes to note abc123
+    """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
     if clear:
         n = store.working_clear()
         console.print(f"[green]Cleared[/green] {n} working memory items")
+        return
+
+    if extend:
+        import sqlite3
+        from datetime import datetime, timezone, timedelta
+        try:
+            note_id, extra = extend.split(":", 1)
+            extra_min = int(extra)
+        except ValueError:
+            console.print("[red]--extend format: <id>:<minutes>  e.g. abc123:60[/red]")
+            raise typer.Exit(1)
+        with sqlite3.connect(store._db) as con:
+            row = con.execute(
+                "SELECT expires_at FROM working_memory WHERE id = ?", (note_id,)
+            ).fetchone()
+            if not row:
+                console.print(f"[yellow]No working memory note with id: {note_id}[/yellow]")
+                raise typer.Exit(1)
+            try:
+                old_exp = datetime.fromisoformat(row[0])
+            except Exception:
+                old_exp = datetime.now(timezone.utc)
+            # Extend from whichever is later: old expiry or now
+            base = max(old_exp, datetime.now(timezone.utc))
+            new_exp = base + timedelta(minutes=extra_min)
+            con.execute(
+                "UPDATE working_memory SET expires_at = ? WHERE id = ?",
+                (new_exp.isoformat(), note_id),
+            )
+        console.print(f"  [green]Extended[/green] {note_id} by {extra_min} min - "
+                      f"now expires {new_exp.isoformat()[:19]}")
         return
 
     if note:

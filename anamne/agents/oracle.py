@@ -183,6 +183,64 @@ class OracleAgent:
             )
         )
 
+    def ask_stream(self, question: str) -> None:
+        """Ask and stream the LLM answer token-by-token to the terminal.
+
+        Lower latency to first output than ask_pretty() — useful for
+        long answers where the user can start reading immediately.
+        """
+        import sys
+        ep_count = self._store.count()
+        fact_count = self._store.fact_count()
+        work_count = len(self._store.working_active())
+
+        console.print()
+        console.print(
+            f"[bold cyan]Oracle[/bold cyan] "
+            f"[dim](streaming) recalling across {ep_count} episodic, "
+            f"{fact_count} facts, {work_count} working...[/dim]"
+        )
+        console.print()
+
+        # Build the prompt the same way ask() does
+        episodic = self._store.search(question, n_results=8)
+        facts = self._store.search_facts_ranked(question, limit=8)
+        working = self._store.working_active()[:10]
+
+        if not (episodic or facts or working):
+            console.print(
+                "[yellow]No memory found.[/yellow] "
+                "Try anamne remember / anamne index first."
+            )
+            return
+
+        if facts:
+            self._store.touch_facts([f["id"] for f in facts])
+
+        verbatim_ep = episodic[:_VERBATIM_K]
+        tail_ep = episodic[_COMPRESS_AFTER:]
+        compressed_section = ""
+        if tail_ep:
+            summary = self._compress_tail(tail_ep, question)
+            compressed_section = (
+                f"BACKGROUND CONTEXT (compressed from {len(tail_ep)} lower-ranked episodic "
+                f"items - ACC-style bounded state):\n{summary}\n\n"
+            )
+
+        prompt = _ORACLE_PROMPT.format(
+            working=self._format_working(working),
+            facts=self._format_facts(facts),
+            decisions=self._format_decisions(verbatim_ep),
+            compressed_section=compressed_section,
+            question=question,
+        )
+
+        # Stream to stdout
+        for chunk in self._llm.complete_stream(prompt, max_tokens=2048):
+            print(chunk, end="", flush=True)
+        print()  # final newline
+        console.print()
+
     def consolidate_facts(
         self,
         similarity_threshold: float = 0.6,

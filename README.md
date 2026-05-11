@@ -138,6 +138,7 @@ anamne capture-clipboard --distill   # LLM extracts multiple facts
 ```bash
 # Recall anything — searches all three layers, cited answer
 anamne recall "why did we switch from MySQL?"
+anamne recall "payment architecture" --stream  # stream tokens as they arrive
 
 # Direct scratchpad search — fast, ACT-R ranked, no API key needed
 anamne search postgres
@@ -239,6 +240,10 @@ anamne forget-tag docs.example.com --yes # skip confirmation
 
 # Wipe an entire memory layer (irreversible)
 anamne clear scratchpad        # or: working | episodic | all
+
+# Find and remove exact-text duplicate facts (no LLM)
+anamne dedupe             # preview
+anamne dedupe --yes       # auto-delete duplicates
 
 # Show memory stats
 anamne status

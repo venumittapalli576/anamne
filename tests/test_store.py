@@ -123,6 +123,7 @@ def test_activation_increases_with_retrieval(store):
     score_before = store.activation_score(mid)
 
     store.touch_facts([mid])
+    time.sleep(0.01)  # ensure t > 0 in ACT-R formula (avoid same-microsecond timestamps)
     score_after = store.activation_score(mid)
 
     assert score_after > score_before

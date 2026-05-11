@@ -95,6 +95,46 @@ class LLMClient:
 
         raise RuntimeError(f"Unknown provider: {self._provider}")
 
+    def complete_stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 2048,
+        temperature: float = 0.0,
+    ):
+        """Stream text chunks as they arrive.  Yields str fragments.
+
+        Usage:
+            for chunk in llm.complete_stream(prompt):
+                print(chunk, end='', flush=True)
+        """
+        if self._provider == "anthropic":
+            with self._client.messages.stream(
+                model=self._model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+            return
+
+        if self._provider == "gemini":
+            from google.genai import types
+            for chunk in self._client.models.generate_content_stream(
+                model=self._model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+            ):
+                if chunk.text:
+                    yield chunk.text
+            return
+
+        raise RuntimeError(f"Unknown provider: {self._provider}")
+
     def _gemini_complete(self, prompt: str, max_tokens: int, temperature: float) -> LLMResponse:
         from google.genai import types
         from google.genai import errors as genai_errors

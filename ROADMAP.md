@@ -185,12 +185,25 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 13 - Future ideas
+## What's Built (v0.13.0)
+
+| Feature | Status |
+|---|---|
+| `anamne recall --stream`: streaming LLM output, token-by-token | ✅ |
+| `LLMClient.complete_stream()`: Anthropic + Gemini streaming generators | ✅ |
+| `OracleAgent.ask_stream()`: streaming Oracle recall to terminal | ✅ |
+| `anamne dedupe`: exact-text duplicate detection + bulk delete, no LLM | ✅ |
+| `anamne working --extend <id>:<minutes>`: extend working note expiry | ✅ |
+| Flaky ACT-R timing test fixed with explicit 10ms sleep | ✅ |
+
+---
+
+## Phase 14 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
-- **`anamne ask --stream`** - streaming output for long recall answers
+- **`anamne facts --from DATE --to DATE`** - date-range filter
 
 ---
 
