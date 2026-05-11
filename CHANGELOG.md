@@ -4,6 +4,26 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.32.0] — 2026-05-11
+
+### Added - Phase 32
+
+**`anamne prune --no-retrievals-since YYYY-MM-DD`** - prune unused facts
+- Deletes facts that have NOT been retrieved since the cutoff
+- Combinable with `--older-than` (both conditions must hold)
+- Same `--tag` / `--keep-pinned` / `--yes` flags as the date-only variant
+
+**`anamne ask --layer episodic+scratchpad`** - compound layer filter
+- `--layer` now accepts `+`-joined layer combinations
+- `scratchpad+working` runs both layers without needing an LLM
+- Episodic-included combinations still route through the Oracle
+- Unknown layer names rejected with a clear error
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.31.0] — 2026-05-11
 
 ### Added - Phase 31

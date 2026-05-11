@@ -393,13 +393,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 32 - Future ideas
+## What's Built (v0.32.0)
+
+| Feature | Status |
+|---|---|
+| `anamne prune --no-retrievals-since YYYY-MM-DD` - prune unused facts | ✅ |
+| Combinable with `--older-than` for "old AND unused" | ✅ |
+| `anamne ask --layer episodic+scratchpad` - compound layer filter | ✅ |
+| `--layer scratchpad+working` - hybrid scan without LLM | ✅ |
+
+---
+
+## Phase 33 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne prune --no-retrievals-since DATE`** - prune unused facts
 - **`anamne quiz --resume`** - continue an unfinished quiz session
+- **`anamne mcp tools-list`** - introspect the running MCP tool surface
+- **`anamne working --pin`** - convert a working note into a pinned scratchpad fact
 
 ---
 

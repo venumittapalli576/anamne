@@ -493,7 +493,8 @@ def ask(
     question: str = typer.Argument(..., help="Your WHY question about the codebase"),
     layer: Optional[str] = typer.Option(
         None, "--layer", "-l",
-        help="Restrict to one layer: episodic | scratchpad | working"
+        help="Restrict to layers: episodic | scratchpad | working "
+             "(combinable with '+', e.g. 'episodic+scratchpad')"
     ),
     stream: bool = typer.Option(
         False, "--stream", "-s",
@@ -502,24 +503,43 @@ def ask(
 ) -> None:
     """Ask a question - recalls across all three memory layers with citations.
 
-    Use --layer to restrict to a single memory layer:
+    Use --layer to restrict to one or more memory layers:
       episodic    - only git/ADR decisions
-      scratchpad  - only durable facts (no LLM needed)
-      working     - only active session notes (no LLM needed)
+      scratchpad  - only durable facts (no LLM needed alone)
+      working     - only active session notes (no LLM needed alone)
+
+    Combine layers with '+' to do a hybrid scan:
+      episodic+scratchpad   - skip working memory
+      scratchpad+working    - skip episodic (no LLM)
+      episodic+working      - skip scratchpad
 
     Use --stream for streaming LLM output (lower latency to first token).
 
     Examples:
       anamne ask "why did we choose PostgreSQL?"
       anamne ask "what DB tech do we use?" --layer scratchpad
-      anamne ask "any active debugging context?" --layer working
+      anamne ask "what's in my head right now?" --layer scratchpad+working
       anamne ask "architecture overview" --stream
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
 
-    # Layer-specific shortcuts (no LLM needed)
-    if layer == "scratchpad":
+    layer_norm = (layer or "").lower().strip()
+    layers_req = (
+        {p.strip() for p in layer_norm.split("+") if p.strip()}
+        if layer_norm else set()
+    )
+    valid_layers = {"episodic", "scratchpad", "working"}
+    invalid = layers_req - valid_layers
+    if invalid:
+        console.print(
+            f"[red]Unknown layer(s): {', '.join(invalid)}[/red]  - "
+            "choose from: episodic | scratchpad | working"
+        )
+        raise typer.Exit(1)
+
+    # Single-layer non-LLM shortcuts (preserve old behavior)
+    if layers_req == {"scratchpad"}:
         results = store.search_facts_ranked(question, limit=10)
         if not results:
             console.print("[dim]No matching scratchpad facts.[/dim]")
@@ -531,7 +551,7 @@ def ask(
         console.print()
         return
 
-    if layer == "working":
+    if layers_req == {"working"}:
         items = store.working_active()
         if not items:
             console.print("[dim]Working memory is empty.[/dim]")
@@ -543,9 +563,27 @@ def ask(
         console.print()
         return
 
-    if layer and layer not in ("episodic", "scratchpad", "working", None):
-        console.print(f"[red]Unknown layer: {layer}[/red]  - choose: episodic | scratchpad | working")
-        raise typer.Exit(1)
+    # Compound layer filter without episodic - still no LLM needed
+    if layers_req == {"scratchpad", "working"}:
+        scratch = store.search_facts_ranked(question, limit=10)
+        work = store.search_working(question, limit=10)
+        if not (scratch or work):
+            console.print("[dim]No matching scratchpad or working entries.[/dim]")
+            return
+        console.print(
+            f"\n[bold cyan]Scratchpad + Working matches for '{question}':[/bold cyan]\n"
+        )
+        if scratch:
+            console.print("  [bold]Scratchpad[/bold]")
+            for f in scratch:
+                tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f['tags'] else ""
+                console.print(f"    - {f['fact']}{tag_str}")
+        if work:
+            console.print("  [bold]Working[/bold]")
+            for w in work:
+                console.print(f"    - {w['note']}")
+        console.print()
+        return
 
     _require_api_key()
     from anamne.agents.oracle import OracleAgent
@@ -705,9 +743,14 @@ def forget(
 
 @app.command()
 def prune(
-    older_than: str = typer.Option(
-        ..., "--older-than", "-o", metavar="YYYY-MM-DD",
+    older_than: Optional[str] = typer.Option(
+        None, "--older-than", "-o", metavar="YYYY-MM-DD",
         help="Delete facts created before this date"
+    ),
+    no_retrievals_since: Optional[str] = typer.Option(
+        None, "--no-retrievals-since", "-r", metavar="YYYY-MM-DD",
+        help="Delete facts with NO retrieval since this date "
+             "(unused-and-stale)"
     ),
     tag: list[str] = typer.Option(
         [], "--tag", "-t",
@@ -729,27 +772,62 @@ def prune(
       anamne prune --older-than 2025-01-01
       anamne prune --older-than 2026-01-01 --tag journal --yes
       anamne prune --older-than 2024-12-31 --no-keep-pinned
+      anamne prune --no-retrievals-since 2026-01-01     # unused facts
     """
+    import sqlite3
     from anamne.store.graph import DecisionStore
+
+    if not older_than and not no_retrievals_since:
+        console.print(
+            "[red]Provide at least one cutoff: "
+            "--older-than YYYY-MM-DD or --no-retrievals-since YYYY-MM-DD.[/red]"
+        )
+        raise typer.Exit(code=1)
 
     store = DecisionStore()
     candidates = store.list_facts(limit=100_000, tags=tag or None)
-    candidates = [f for f in candidates if (f.get("created_at") or "") < older_than]
+    if older_than:
+        candidates = [f for f in candidates if (f.get("created_at") or "") < older_than]
+
+    if no_retrievals_since:
+        # A fact qualifies if it has NO retrieval >= the cutoff.
+        with sqlite3.connect(store._db) as con:
+            try:
+                rows = con.execute(
+                    "SELECT DISTINCT fact_id FROM retrieval_log "
+                    "WHERE retrieved_at >= ?",
+                    (no_retrievals_since,),
+                ).fetchall()
+                recently_touched = {r[0] for r in rows}
+            except Exception:
+                recently_touched = set()
+        candidates = [f for f in candidates if f["id"] not in recently_touched]
+
     if keep_pinned:
         candidates = [f for f in candidates if not f.get("pinned")]
 
     if not candidates:
         console.print(
-            f"\n  [dim]Nothing to prune older than {older_than}"
+            f"\n  [dim]Nothing to prune"
+            + (f" older than {older_than}" if older_than else "")
+            + (f" / no retrievals since {no_retrievals_since}"
+                if no_retrievals_since else "")
             + (f", tag={','.join(tag)}" if tag else "")
             + (" (pinned kept)" if keep_pinned else "")
             + ".[/dim]\n"
         )
         return
 
+    label_parts = []
+    if older_than:
+        label_parts.append(f"created before {older_than}")
+    if no_retrievals_since:
+        label_parts.append(f"no retrievals since {no_retrievals_since}")
+    label = " AND ".join(label_parts)
+
     console.print(
         f"\n  [yellow]Would delete {len(candidates)} fact(s) "
-        f"created before {older_than}"
+        f"({label})"
         + (f", tag={','.join(tag)}" if tag else "")
         + (" (pinned preserved)" if keep_pinned else "")
         + ".[/yellow]\n"

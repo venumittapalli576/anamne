@@ -140,10 +140,12 @@ anamne capture-clipboard --distill   # LLM extracts multiple facts
 anamne recall "why did we switch from MySQL?"
 anamne recall "payment architecture" --stream  # stream tokens as they arrive
 
-# Ask a question scoped to one layer (faster, no LLM for scratchpad/working)
+# Ask a question scoped to one or more layers (combinable with '+')
 anamne ask "postgres preference" --layer scratchpad
 anamne ask "current focus" --layer working
 anamne ask "deployment decisions" --layer episodic --stream
+anamne ask "what's in my head?" --layer scratchpad+working   # hybrid, no LLM
+anamne ask "system overview" --layer episodic+scratchpad
 
 # Direct scratchpad search — fast, ACT-R ranked, no API key needed
 anamne search postgres
@@ -263,6 +265,8 @@ anamne forget <memory-id>
 # Bulk-prune stale facts older than a date (pinned facts kept by default)
 anamne prune --older-than 2025-01-01
 anamne prune --older-than 2026-01-01 --tag journal --yes
+anamne prune --no-retrievals-since 2026-01-01            # unused facts
+anamne prune --older-than 2025-01-01 --no-retrievals-since 2026-01-01
 ```
 
 ### Reminders
