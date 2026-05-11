@@ -887,6 +887,157 @@ def import_chat(
     )
 
 
+@app.command(name="import-web")
+def import_web(
+    url: str = typer.Argument(..., help="URL to fetch and distill facts from"),
+    limit: int = typer.Option(15, "--limit", "-n", help="Max facts to extract"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show facts without storing"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Extra tag(s) to apply"),
+) -> None:
+    """Scrape a web page and distill key facts into scratchpad memory.
+
+    Fetches the URL, strips HTML, then uses the LLM to extract facts worth
+    keeping: technical decisions, reference info, architecture notes.
+
+    The domain name is auto-added as a tag so you can filter later.
+
+    Examples:
+      anamne import-web https://12factor.net
+      anamne import-web https://docs.python.org/3/library/asyncio.html --limit 10
+      anamne import-web https://example.com/adr/001 --tag architecture --dry-run
+    """
+    _require_api_key()
+
+    console.print(f"\n[bold]Fetching[/bold] [cyan]{url}[/cyan] …\n")
+
+    # Fetch the page
+    try:
+        import httpx
+        response = httpx.get(
+            url,
+            follow_redirects=True,
+            timeout=20,
+            headers={"User-Agent": "anamne/0.5.0 (fact-distiller)"},
+        )
+        response.raise_for_status()
+        html = response.text
+    except Exception as e:
+        console.print(f"[red]Fetch failed:[/red] {e}")
+        raise typer.Exit(1)
+
+    # Strip HTML → plain text using stdlib html.parser
+    page_text = _strip_html(html)
+    if len(page_text) < 100:
+        console.print("[yellow]Page has very little text content.[/yellow]")
+        raise typer.Exit(1)
+
+    # Extract domain for auto-tagging
+    from urllib.parse import urlparse as _urlparse
+    domain = _urlparse(url).netloc.lstrip("www.")
+
+    console.print(
+        f"[dim]Extracted {len(page_text):,} chars — distilling up to {limit} facts…[/dim]\n"
+    )
+
+    from anamne.llm import LLMClient
+    import json as _json
+
+    llm = LLMClient()
+    prompt = (
+        "You are reading a web page. Extract durable facts worth keeping long-term — "
+        "things that are still useful weeks or months from now.\n\n"
+        "Keep:\n"
+        "- Core concepts, design principles, or architectural patterns described\n"
+        "- Specific technical decisions or recommendations on the page\n"
+        "- Important constraints, gotchas, or best practices\n"
+        "- Reference info that would be useful to recall later\n\n"
+        "Skip:\n"
+        "- Navigation, menus, footers, ads, boilerplate\n"
+        "- Facts that are obvious or common knowledge\n"
+        "- Very detailed implementation steps (summarise instead)\n\n"
+        f"Page URL: {url}\n"
+        f"Page text (truncated):\n{page_text[:10000]}\n\n"
+        f"Return ONLY a JSON array of up to {limit} concise fact strings.\n"
+        "Example: [\"asyncio uses a single-threaded event loop\", \"await suspends the coroutine\"]\n"
+        "JSON array:"
+    )
+
+    try:
+        raw_response = llm.complete(prompt, max_tokens=1024).text.strip()
+        if raw_response.startswith("```"):
+            raw_response = raw_response.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            if raw_response.startswith("json"):
+                raw_response = raw_response[4:].strip()
+        extracted: list[str] = _json.loads(raw_response)
+        if not isinstance(extracted, list):
+            raise ValueError("Expected JSON array")
+    except Exception as e:
+        console.print(f"[red]Extraction failed ({e}).[/red]")
+        raise typer.Exit(1)
+
+    if not extracted:
+        console.print("[yellow]No durable facts found on this page.[/yellow]")
+        return
+
+    console.print(f"[bold]Found {len(extracted)} fact(s):[/bold]\n")
+    for i, fact in enumerate(extracted, 1):
+        console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
+
+    if dry_run:
+        console.print(f"\n[yellow]Dry run — nothing stored.[/yellow] Remove --dry-run to save.")
+        return
+
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+    tags = list({domain, "web-import", *tag})
+    for fact in extracted:
+        store.remember(fact.strip(), tags=tags)
+
+    console.print(
+        f"\n[green]Stored {len(extracted)} fact(s)[/green] "
+        f"[dim](tagged: {', '.join(sorted(tags))})[/dim]"
+    )
+
+
+def _strip_html(html: str) -> str:
+    """Strip HTML tags and decode entities, returning plain text."""
+    from html.parser import HTMLParser
+
+    class _TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self._parts: list[str] = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style", "nav", "header", "footer", "aside"):
+                self._skip = True
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "nav", "header", "footer", "aside"):
+                self._skip = False
+            if tag in ("p", "div", "li", "h1", "h2", "h3", "h4", "br", "tr"):
+                self._parts.append("\n")
+
+        def handle_data(self, data):
+            if not self._skip:
+                stripped = data.strip()
+                if stripped:
+                    self._parts.append(stripped + " ")
+
+        def handle_entityref(self, name):
+            pass  # stdlib handles entities via unescape
+
+    extractor = _TextExtractor()
+    extractor.feed(html)
+    text = "".join(extractor._parts)
+    # Collapse whitespace
+    import re
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
 def _parse_chat_json(raw: str, source: str) -> str:
     """Try to extract human-readable conversation text from a JSON export."""
     import json as _json
@@ -1220,6 +1371,35 @@ def working(
     for w in items:
         console.print(f"  [cyan]{w['id']}[/cyan]  {w['note']}")
         console.print(f"           [dim]expires: {w['expires_at']}[/dim]")
+
+
+@app.command(name="search-working")
+def search_working(
+    query: str = typer.Argument(..., help="Search query"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
+) -> None:
+    """Search active working-memory notes using semantic + substring matching.
+
+    Searches only non-expired notes. Useful when you have many session notes
+    and want to find a specific one quickly.
+
+    Examples:
+      anamne search-working "auth"
+      anamne search-working "login bug" --limit 5
+    """
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+    results = store.search_working(query, limit=limit)
+
+    if not results:
+        console.print(f"[dim]No working-memory notes matching '[bold]{query}[/bold]'.[/dim]")
+        return
+
+    console.print(f"\n[bold]Working memory — {len(results)} match(es) for '{query}':[/bold]\n")
+    for w in results:
+        console.print(f"  [cyan]{w['id']}[/cyan]  {w['note']}")
+        console.print(f"           [dim]expires: {w['expires_at']}[/dim]")
+    console.print()
 
 
 @app.command()

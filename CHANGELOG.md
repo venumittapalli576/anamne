@@ -4,6 +4,40 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.5.0] — 2026-05-11
+
+### Added — Phase 5
+
+**`anamne import-web`**
+- New CLI command: `anamne import-web <url> [--limit N] [--dry-run] [--tag TAG]`
+- Fetches the URL with httpx, strips HTML using Python stdlib `html.parser` (zero new deps)
+- LLM distils up to N durable facts from the page content
+- Auto-tags with domain name + `web-import`; extra `--tag` flags apply
+- Smart HTML stripping skips `<script>`, `<style>`, `<nav>`, `<header>`, `<footer>`
+
+**Working memory semantic search**
+- `working_add()` now embeds notes into a ChromaDB `working_memory` collection
+- `store.search_working(query, limit)` — hybrid: substring + semantic, expired-notes-aware
+- New CLI command: `anamne search-working <query>`
+- New MCP tool: `search_working_memory(query, limit)` (16 MCP tools total)
+- `working_active()` / `working_clear()` / `clear_working()` all prune ChromaDB in sync
+
+**README overhaul**
+- All commands documented including `edit`, `history`, `ui`, `import-web`, `search-working`, `info`, `tag`, `clear`
+- MCP table updated to 16 tools
+- Added web dashboard section
+- Quick demo includes `import-web` example
+
+**CI: Node.js 24 opt-in**
+- Added `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to both `ci.yml` and `publish.yml`
+- Eliminates Node.js 20 deprecation warning ahead of June 2, 2026 deadline
+
+### Tests
+- 63 tests total (was 60), all passing
+- New: 3 working-memory search tests (substring, empty, expired-filtered)
+
+---
+
 ## [0.4.0] — 2026-05-11
 
 ### Added — Phase 4 Polish

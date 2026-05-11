@@ -131,6 +131,11 @@ class DecisionStore:
             name="scratchpad",
             embedding_function=_ef,
         )
+        # Phase 5: semantic search over working memory notes
+        self._working_col = self._chroma.get_or_create_collection(
+            name="working_memory",
+            embedding_function=_ef,
+        )
         self._migrate_scratchpad_to_chroma()
 
     # ------------------------------------------------------------------ #
@@ -388,7 +393,14 @@ class DecisionStore:
         """Delete all working memory notes. Returns count deleted."""
         with sqlite3.connect(self._db) as con:
             cur = con.execute("DELETE FROM working_memory")
-            return cur.rowcount
+            count = cur.rowcount
+        try:
+            ids = self._working_col.get(include=[])["ids"]
+            if ids:
+                self._working_col.delete(ids=ids)
+        except Exception:
+            pass
+        return count
 
     def clear_episodic(self) -> int:
         """Delete all episodic decisions and their embeddings."""
@@ -585,6 +597,12 @@ class DecisionStore:
                 "VALUES (?, ?, ?, ?)",
                 (mem_id, note, now.isoformat(), expires.isoformat()),
             )
+        # Embed for semantic search
+        self._working_col.upsert(
+            ids=[mem_id],
+            documents=[note],
+            metadatas=[{"expires_at": expires.isoformat()}],
+        )
         return mem_id
 
     def working_active(self) -> list[dict]:
@@ -592,21 +610,78 @@ class DecisionStore:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(self._db) as con:
-            # Drop expired entries on read (lazy GC)
-            con.execute("DELETE FROM working_memory WHERE expires_at < ?", (now,))
+            # Lazy GC: collect expired IDs before deleting
+            expired_rows = con.execute(
+                "SELECT id FROM working_memory WHERE expires_at < ?", (now,)
+            ).fetchall()
+            expired_ids = [r[0] for r in expired_rows]
+            if expired_ids:
+                con.execute("DELETE FROM working_memory WHERE expires_at < ?", (now,))
             rows = con.execute(
                 "SELECT id, note, created_at, expires_at "
                 "FROM working_memory ORDER BY created_at DESC"
             ).fetchall()
+        # Prune expired from ChromaDB too
+        if expired_ids:
+            try:
+                self._working_col.delete(ids=expired_ids)
+            except Exception:
+                pass
         return [
             {"id": r[0], "note": r[1], "created_at": r[2], "expires_at": r[3]}
             for r in rows
         ]
 
+    def search_working(self, query: str, limit: int = 10) -> list[dict]:
+        """Semantic search over active working-memory notes.
+
+        Searches only non-expired notes; expired ones are pruned on the fly.
+        Falls back to substring matching when ChromaDB is empty.
+        """
+        # Prune expired first (side-effect: clears ChromaDB stale entries)
+        active = self.working_active()
+        if not active:
+            return []
+
+        # Substring fallback
+        q_lower = query.lower()
+        substring_hits = [n for n in active if q_lower in n["note"].lower()]
+
+        # Semantic search
+        try:
+            total = self._working_col.count()
+            if total > 0:
+                results = self._working_col.query(
+                    query_texts=[query],
+                    n_results=min(limit, total),
+                )
+                semantic_ids = set(results["ids"][0]) if results["ids"] else set()
+                semantic_hits = [n for n in active if n["id"] in semantic_ids]
+            else:
+                semantic_hits = []
+        except Exception:
+            semantic_hits = []
+
+        # Merge and deduplicate
+        seen: set[str] = set()
+        merged: list[dict] = []
+        for n in semantic_hits + substring_hits:
+            if n["id"] not in seen:
+                seen.add(n["id"])
+                merged.append(n)
+        return merged[:limit]
+
     def working_clear(self) -> int:
         with sqlite3.connect(self._db) as con:
             cur = con.execute("DELETE FROM working_memory")
-            return cur.rowcount
+            count = cur.rowcount
+        try:
+            ids = self._working_col.get(include=[])["ids"]
+            if ids:
+                self._working_col.delete(ids=ids)
+        except Exception:
+            pass
+        return count
 
     # ------------------------------------------------------------------ #
     # Incremental indexing helpers                                          #

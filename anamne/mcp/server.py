@@ -1,11 +1,11 @@
 ﻿"""
 ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 15 memory tools covering all three LIGHT layers:
+Exposes 16 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
   Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
               update_fact, get_fact_history, search_facts, consolidate_facts
-  Working   : working_memory_add, working_memory_active
+  Working   : working_memory_add, working_memory_active, search_working_memory
 """
 
 from __future__ import annotations
@@ -146,6 +146,16 @@ def working_memory_add(note: str, ttl_minutes: int = 60) -> dict:
 def working_memory_active() -> list[dict]:
     """Return active (non-expired) working memory items, newest first."""
     return _store.working_active()
+
+
+@mcp.tool()
+def search_working_memory(query: str, limit: int = 10) -> list[dict]:
+    """Semantic + substring search over active working-memory notes.
+
+    Only searches non-expired notes. Useful for finding a specific session
+    context note when you have many active items.
+    """
+    return _store.search_working(query, limit=limit)
 
 
 @mcp.tool()

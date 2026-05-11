@@ -233,6 +233,34 @@ def test_working_expired_not_returned(store):
     assert not any(w["id"] == mid for w in active)
 
 
+def test_search_working_substring(store):
+    store.working_add("currently debugging authentication middleware", ttl_minutes=60)
+    store.working_add("reviewing payment processing code", ttl_minutes=60)
+    results = store.search_working("auth")
+    assert len(results) >= 1
+    assert any("auth" in r["note"].lower() for r in results)
+
+
+def test_search_working_empty(store):
+    assert store.search_working("anything") == []
+
+
+def test_search_working_no_expired(store):
+    """Expired notes must not appear in search results."""
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+    mid = "wexpired"
+    now = datetime.now(timezone.utc)
+    past = now - timedelta(minutes=5)
+    with sqlite3.connect(store._db) as con:
+        con.execute(
+            "INSERT INTO working_memory (id, note, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (mid, "expired session note", now.isoformat(), past.isoformat()),
+        )
+    results = store.search_working("expired")
+    assert not any(r["id"] == mid for r in results)
+
+
 # ------------------------------------------------------------------ #
 # list_all_decisions                                                    #
 # ------------------------------------------------------------------ #

@@ -92,12 +92,25 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 5 — Future ideas
+## What's Built (v0.5.0)
+
+| Feature | Status |
+|---|---|
+| `anamne import-web <url>` — scrape + distill facts from any web page | ✅ |
+| Working memory ChromaDB embeddings + `search_working()` | ✅ |
+| `anamne search-working <query>` CLI command | ✅ |
+| MCP `search_working_memory` tool (16 tools total) | ✅ |
+| README fully updated (all commands, 16-tool MCP table) | ✅ |
+| GitHub Actions: opt into Node.js 24 | ✅ |
+
+---
+
+## Phase 6 — Future ideas
 
 - **Browser extension** — "Remember this?" prompt on pages you read
-- **`anamne import-web`** — scrape and distill from a URL into scratchpad
-- **Embeddings for working memory** — semantic search on session notes
-- **Shared memory** — export/import memory bundles for teams
+- **`anamne import-memory <file>`** — import from another anamne JSON export (team sharing)
+- **Scheduled auto-sync** — cron job to run `anamne sync` on watched repos
+- **`anamne doctor`** — diagnose common issues (missing API key, corrupt DB, stale ChromaDB)
 
 ---
 
