@@ -425,13 +425,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 35 - Future ideas
+## What's Built (v0.35.0)
+
+| Feature | Status |
+|---|---|
+| `anamne mcp-config --client claude\|cursor\|cline` - paste-ready snippets | ✅ |
+| `anamne notebook <file.ipynb>` - Jupyter notebook export | ✅ |
+| `anamne diff --history` - compare current vs previous fact version | ✅ |
+
+---
+
+## Phase 36 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
-- **`anamne diff --history`** - compare against an older version in fact_history
-- **`anamne mcp-config`** - print Claude / Cursor config snippets pre-filled
-- **`anamne notebook`** - dump scratchpad facts as a runnable Jupyter notebook
+- **`anamne notebook --runnable`** - notebook cells use `import anamne` API
+- **`anamne mcp-config --apply`** - write directly to client config file
+- **`anamne sync-cloud`** - one-way push to a personal git-backed mirror
 
 ---
 

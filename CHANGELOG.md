@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.35.0] — 2026-05-11
+
+### Added - Phase 35
+
+**`anamne mcp-config`** - pre-filled MCP config snippets
+- `--client claude` (default), `cursor`, or `cline`
+- Auto-detects the absolute path to the local `anamne` executable
+- Prints a paste-ready JSON block plus the target file path
+
+**`anamne notebook <file.ipynb>`** - Jupyter notebook export
+- One markdown cell per fact, with id + tags + pinned indicator
+- `--tag X` filters; `--limit N` caps facts (default 200)
+- Recipient needs Jupyter only, not ANAMNE
+
+**`anamne diff --history`** - compare current vs previous fact version
+- Diffs against the most recent meaningful entry in `fact_history`
+- Useful right after `anamne edit` to verify what changed
+- Falls back gracefully when no history exists
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.34.0] — 2026-05-11
 
 ### Added - Phase 34

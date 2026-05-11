@@ -249,6 +249,7 @@ anamne related <memory-id> --tag python   # tag-filtered neighbors
 
 # Compare two facts side-by-side (text, tags, ACT-R, pinned status)
 anamne diff <id1> <id2>
+anamne diff <id1> --history     # compare current vs previous version
 
 # Manually merge two facts into one (keeps keep_id, deletes drop_id)
 anamne merge <keep_id> <drop_id>
@@ -362,6 +363,10 @@ anamne backup
 anamne backup --dir ./my-backups
 anamne backup --keep 7              # daily cron: retain last week of backups
 
+# Export scratchpad facts as a runnable Jupyter notebook
+anamne notebook today.ipynb
+anamne notebook py.ipynb --tag python --limit 100
+
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
 anamne fact-of-the-day --post-to https://hooks.slack.com/services/...
@@ -438,6 +443,12 @@ anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 # Introspect which tools are wired up before connecting an MCP client
 anamne tools
 anamne tools --json
+anamne tools --schema remember        # full JSON schema for one tool
+
+# Print a paste-ready MCP config snippet
+anamne mcp-config                     # Claude Code style (default)
+anamne mcp-config --client cursor
+anamne mcp-config --client cline
 ```
 
 ---

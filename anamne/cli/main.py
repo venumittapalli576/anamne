@@ -3795,6 +3795,126 @@ def tag_stats(
         console.print()
 
 
+@app.command(name="mcp-config")
+def mcp_config(
+    client: str = typer.Option(
+        "claude", "--client", "-c",
+        help="Client: claude | cursor | cline"
+    ),
+) -> None:
+    """Print a pre-filled MCP config snippet you can paste into a client.
+
+    Detects the absolute path to the local `anamne` executable so you can drop
+    the snippet directly into the client's config file.
+
+    Examples:
+      anamne mcp-config                  # Claude Code style
+      anamne mcp-config --client cursor
+      anamne mcp-config --client cline
+    """
+    import shutil
+
+    cmd_path = shutil.which("anamne") or "anamne"
+
+    if client == "claude":
+        snippet = {
+            "mcpServers": {
+                "anamne": {
+                    "command": cmd_path,
+                    "args": ["mcp-server"],
+                }
+            }
+        }
+        target = "~/.claude.json (macOS/Linux) or %APPDATA%\\Claude\\claude_desktop_config.json"
+    elif client == "cursor":
+        snippet = {"command": f"{cmd_path} mcp-server"}
+        target = "Cursor Settings > MCP > Add server"
+    elif client == "cline":
+        snippet = {
+            "mcpServers": {
+                "anamne": {
+                    "command": cmd_path,
+                    "args": ["mcp-server"],
+                }
+            }
+        }
+        target = "Cline VS Code extension settings"
+    else:
+        console.print(f"[red]Unknown client '{client}'.[/red]  "
+                      "Use claude | cursor | cline.")
+        raise typer.Exit(code=1)
+
+    console.print(f"\n  [dim]Paste into:[/dim] {target}\n")
+    console.print(json.dumps(snippet, indent=2))
+    console.print()
+
+
+@app.command()
+def notebook(
+    output: Path = typer.Argument(..., help="Output .ipynb file"),
+    tag: list[str] = typer.Option(
+        [], "--tag", "-t", help="Filter facts by tag (repeatable)"
+    ),
+    limit: int = typer.Option(200, "--limit", "-n", help="Max facts to include"),
+) -> None:
+    """Export scratchpad facts as a runnable Jupyter notebook.
+
+    Each fact becomes a Markdown cell. Useful for sharing a curated knowledge
+    bundle with anyone who has Jupyter installed - no ANAMNE dependency needed.
+
+    Examples:
+      anamne notebook today.ipynb
+      anamne notebook py.ipynb --tag python --limit 100
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    facts = store.list_facts(limit=limit, tags=tag or None)
+    if not facts:
+        console.print("\n  [dim]No facts to export.[/dim]\n")
+        return
+
+    cells: list[dict] = [{
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "# ANAMNE memory export\n",
+            f"_{len(facts)} fact(s)_"
+            + (f"  (tag: {', '.join(tag)})" if tag else "") + "\n",
+        ],
+    }]
+    for f in facts:
+        tag_blurb = (
+            "  \n*tags: " + ", ".join(f["tags"]) + "*"
+            if f.get("tags") else ""
+        )
+        pin_blurb = "  \n**[pinned]**" if f.get("pinned") else ""
+        cells.append({
+            "cell_type": "markdown",
+            "metadata": {"anamne_id": f["id"]},
+            "source": [
+                f"### `{f['id']}`\n",
+                f"{f['fact']}{tag_blurb}{pin_blurb}",
+            ],
+        })
+
+    nb = {
+        "cells": cells,
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Python 3", "language": "python", "name": "python3"
+            },
+            "language_info": {"name": "python"},
+            "anamne_export": {"facts": len(facts)},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    output.write_text(json.dumps(nb, indent=2), encoding="utf-8")
+    console.print(f"\n  [green]Notebook written[/green]  [bold]{output}[/bold]  "
+                  f"[dim]({len(facts)} fact(s))[/dim]\n")
+
+
 @app.command()
 def tools(
     as_json: bool = typer.Option(False, "--json", help="JSON output"),
@@ -3919,28 +4039,70 @@ def mcp_server() -> None:
 @app.command()
 def diff(
     id1: str = typer.Argument(..., help="First fact id"),
-    id2: str = typer.Argument(..., help="Second fact id"),
+    id2: Optional[str] = typer.Argument(None, help="Second fact id (omit if --history)"),
+    history: bool = typer.Option(
+        False, "--history",
+        help="Compare id1's current content against the previous history version"
+    ),
 ) -> None:
     """Compare two scratchpad facts side-by-side (text, tags, activation).
 
-    Useful when `anamne related` surfaces a near-duplicate and you want to
-    decide whether to merge, edit, or leave both.
+    With --history, compares id1's current state against its most recent
+    archived version in fact_history (instead of needing a second id).
 
     Examples:
       anamne diff abc123 def456
+      anamne diff abc123 --history
     """
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
     a = store.get_fact(id1)
-    b = store.get_fact(id2)
-    if a is None or b is None:
-        missing = id1 if a is None else id2
-        console.print(f"[red]No fact found with id '{missing}'.[/red]")
+    if a is None:
+        console.print(f"[red]No fact found with id '{id1}'.[/red]")
         raise typer.Exit(code=1)
 
+    if history:
+        hist = store.get_fact_history(id1)
+        # Most recent entry that has non-empty content and is not the synthetic
+        # "current state" row some implementations record on every change.
+        old = None
+        for h in reversed(hist):
+            if h.get("content") and h.get("change_type") != "current":
+                old = h
+                break
+        if old is None:
+            console.print(f"[dim]No prior history for fact {id1}.[/dim]")
+            return
+        try:
+            old_tags = json.loads(old.get("tags") or "[]")
+        except Exception:
+            old_tags = []
+        b = {
+            "id": f"history@{old.get('changed_at', '')[:19]}",
+            "fact": old.get("content") or "",
+            "tags": old_tags,
+            "created_at": old.get("changed_at") or "",
+            "last_used_at": old.get("changed_at") or "",
+            "use_count": 0,
+            "pinned": False,
+        }
+    else:
+        if id2 is None:
+            console.print(
+                "[red]Provide a second fact id, or use --history.[/red]"
+            )
+            raise typer.Exit(code=1)
+        b = store.get_fact(id2)
+        if b is None:
+            console.print(f"[red]No fact found with id '{id2}'.[/red]")
+            raise typer.Exit(code=1)
+
     act_a = store.activation_score(a["id"])
-    act_b = store.activation_score(b["id"])
+    try:
+        act_b = store.activation_score(b["id"]) if not history else 0.0
+    except Exception:
+        act_b = 0.0
     tags_a = ", ".join(a.get("tags") or []) or "-"
     tags_b = ", ".join(b.get("tags") or []) or "-"
 
