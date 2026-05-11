@@ -4,6 +4,28 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.30.0] — 2026-05-11
+
+### Added - Phase 30
+
+**`anamne quiz --grade`** - interactive grading mode
+- Asks the user for an answer at the terminal
+- LLM grades it as correct / partial / wrong with a one-sentence reason
+- Prints a coloured per-question verdict and a final score summary
+- Ctrl-C cancels the quiz mid-stream
+
+**`anamne template export <file>`** - dump templates to a portable JSON file
+- File is a plain `{name: body}` JSON object - editable by hand or sync-friendly
+
+**`anamne template import <file>`** - merge templates from a JSON file
+- Imports keep existing templates and overwrite same-name entries
+- Reports counts of newly-added vs replaced
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.29.0] — 2026-05-11
 
 ### Added - Phase 29

@@ -363,12 +363,15 @@ anamne random 3 --pinned
 # LLM-driven quiz against your facts (one Q&A per fact)
 anamne quiz
 anamne quiz --count 5 --tag architecture
+anamne quiz --count 5 --grade     # prompt for answer, LLM grades it
 
 # Reusable text templates for structured fact entry
 anamne template add decision "Decision: {what}. Why: {why}."
 anamne template list
 anamne template use decision "Use Postgres. Why: concurrent writes." --tag db
 anamne template remove decision
+anamne template export shared-templates.json
+anamne template import shared-templates.json
 
 # Markdown snapshot: Pinned + Top activation + Recent + Working
 anamne snapshot

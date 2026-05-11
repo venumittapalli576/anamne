@@ -3792,7 +3792,7 @@ def _save_templates(data: dict) -> None:
 @app.command()
 def template(
     action: str = typer.Argument(
-        ..., help="Action: add | list | use | remove"
+        ..., help="Action: add | list | use | remove | export | import"
     ),
     name: Optional[str] = typer.Argument(None, help="Template name (for add/use/remove)"),
     body: Optional[str] = typer.Argument(
@@ -3859,6 +3859,46 @@ def template(
         console.print(f"\n  [green]Removed[/green]  [cyan]{name}[/cyan]\n")
         return
 
+    if action == "export":
+        if not name:
+            console.print("[red]usage: anamne template export <output-file>[/red]")
+            raise typer.Exit(code=1)
+        Path(name).write_text(
+            json.dumps(templates, indent=2), encoding="utf-8"
+        )
+        console.print(f"\n  [green]Exported {len(templates)} template(s)[/green]  "
+                      f"-> {name}\n")
+        return
+
+    if action == "import":
+        if not name:
+            console.print("[red]usage: anamne template import <input-file>[/red]")
+            raise typer.Exit(code=1)
+        try:
+            incoming = json.loads(Path(name).read_text(encoding="utf-8"))
+        except Exception as e:
+            console.print(f"[red]Failed to read templates file:[/red] {e}")
+            raise typer.Exit(code=1)
+        if not isinstance(incoming, dict):
+            console.print("[red]Template file must be a JSON object {name: body}[/red]")
+            raise typer.Exit(code=1)
+        added, replaced = 0, 0
+        for k, v in incoming.items():
+            if not isinstance(v, str):
+                continue
+            if k in templates:
+                replaced += 1
+            else:
+                added += 1
+            templates[k] = v
+        _save_templates(templates)
+        console.print(
+            f"\n  [green]Imported[/green]  "
+            f"{added} new, {replaced} replaced.  "
+            f"Total templates: [bold]{len(templates)}[/bold]\n"
+        )
+        return
+
     if action == "use":
         if not name:
             console.print("[red]usage: anamne template use <name> \"<text>\" "
@@ -3893,7 +3933,10 @@ def template(
         )
         return
 
-    console.print(f"[red]Unknown action '{action}'. Use add | list | use | remove.[/red]")
+    console.print(
+        f"[red]Unknown action '{action}'. "
+        "Use add | list | use | remove | export | import.[/red]"
+    )
     raise typer.Exit(code=1)
 
 
@@ -3901,17 +3944,25 @@ def template(
 def quiz(
     count: int = typer.Option(3, "--count", "-n", help="Number of questions"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Restrict to facts with this tag"),
+    grade: bool = typer.Option(
+        False, "--grade", "-g",
+        help="Interactive: ask the user, then LLM-grade each answer"
+    ),
 ) -> None:
     """LLM-driven Q&A drill against your scratchpad facts.
 
-    Picks N random facts and asks the LLM to write one question per fact, plus
-    the model-provided answer. Touches the source facts for ACT-R activation.
-    Useful for spaced repetition / self-quiz of durable knowledge.
+    Picks N random facts and asks the LLM to write one question per fact. By
+    default the answer is shown immediately. With --grade, the shell prompts
+    for the user's answer and the LLM scores correctness (correct / partial /
+    wrong) with a one-line reason.
+
+    Touches the source facts for ACT-R activation. Useful for spaced
+    repetition / self-quiz of durable knowledge.
 
     Examples:
       anamne quiz
-      anamne quiz --count 5
-      anamne quiz --tag architecture --count 3
+      anamne quiz --count 5 --grade
+      anamne quiz --tag architecture --count 3 --grade
     """
     import random
     from anamne.store.graph import DecisionStore
@@ -3930,7 +3981,12 @@ def quiz(
         console.print(f"  [red]LLM unavailable:[/red] {e}")
         raise typer.Exit(code=1)
 
-    console.print(f"\n  [bold]Quiz[/bold]  [dim]({len(sample)} question(s))[/dim]\n")
+    correct_count = 0
+    partial_count = 0
+    wrong_count = 0
+
+    console.print(f"\n  [bold]Quiz[/bold]  [dim]({len(sample)} question(s)"
+                  f"{' - interactive grading' if grade else ''})[/dim]\n")
     for i, f in enumerate(sample, start=1):
         prompt = (
             "Write one short quiz question about the fact below, then on a "
@@ -3951,13 +4007,67 @@ def quiz(
             elif ln.lower().startswith("a:"):
                 a_line = ln[2:].strip()
         if not q_line or not a_line:
-            # Fall back to raw output
             console.print(f"  [bold]Q{i}.[/bold] {raw}\n")
             continue
+
         console.print(f"  [bold]Q{i}.[/bold] {q_line}")
-        console.print(f"      [dim]A:[/dim] {a_line}")
-        console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]")
-        console.print()
+        if not grade:
+            console.print(f"      [dim]A:[/dim] {a_line}")
+            console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]")
+            console.print()
+            continue
+
+        # Interactive grading
+        try:
+            user_answer = input("    your answer> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n  [dim]quiz interrupted[/dim]\n")
+            break
+        if not user_answer:
+            console.print(f"      [dim]skipped[/dim]  expected: {a_line}\n")
+            continue
+        grade_prompt = (
+            "Grade the USER ANSWER against the REFERENCE ANSWER. Reply EXACTLY "
+            "in this format on ONE line:\n"
+            "VERDICT: <correct|partial|wrong> | REASON: <one short sentence>\n\n"
+            f"QUESTION: {q_line}\n"
+            f"REFERENCE ANSWER: {a_line}\n"
+            f"USER ANSWER: {user_answer}\n"
+            f"SOURCE FACT: {f['fact']}"
+        )
+        try:
+            grade_raw = client.complete(grade_prompt, max_tokens=120).text.strip()
+        except Exception as e:
+            grade_raw = f"VERDICT: wrong | REASON: grading failed ({e})"
+        verdict = "wrong"
+        reason = grade_raw
+        if "VERDICT:" in grade_raw:
+            after = grade_raw.split("VERDICT:", 1)[1]
+            verdict = after.split("|")[0].strip().lower()
+            if "REASON:" in after:
+                reason = after.split("REASON:", 1)[1].strip()
+        if verdict.startswith("correct"):
+            correct_count += 1
+            colour = "green"
+        elif verdict.startswith("partial"):
+            partial_count += 1
+            colour = "yellow"
+        else:
+            wrong_count += 1
+            colour = "red"
+        console.print(f"      [{colour}]{verdict.upper()}[/{colour}]  {reason}")
+        console.print(f"      [dim]reference:[/dim] {a_line}")
+        console.print(f"      [dim]from:[/dim] [cyan]{f['id']}[/cyan]\n")
+
+    if grade and (correct_count + partial_count + wrong_count) > 0:
+        total = correct_count + partial_count + wrong_count
+        console.print(
+            f"  [bold]Result:[/bold]  "
+            f"[green]{correct_count} correct[/green]   "
+            f"[yellow]{partial_count} partial[/yellow]   "
+            f"[red]{wrong_count} wrong[/red]   "
+            f"[dim](of {total})[/dim]\n"
+        )
 
     try:
         store.touch_facts([f["id"] for f in sample])

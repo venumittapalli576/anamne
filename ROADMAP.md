@@ -371,13 +371,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 30 - Future ideas
+## What's Built (v0.30.0)
+
+| Feature | Status |
+|---|---|
+| `anamne quiz --grade` - interactive prompt + LLM grade | ✅ |
+| Coloured per-question verdict and final tally | ✅ |
+| `anamne template export <file>` - dump JSON for sharing | ✅ |
+| `anamne template import <file>` - merge in templates | ✅ |
+
+---
+
+## Phase 31 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne quiz --grade`** - prompt the user, then have the LLM grade an answer
-- **`anamne template export / import`** - share templates across machines
+- **`anamne quiz --difficulty hard`** - LLM-controlled difficulty knob
+- **`anamne forget --older-than DATE`** - bulk-prune stale facts
 
 ---
 
