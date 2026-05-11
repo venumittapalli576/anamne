@@ -746,6 +746,88 @@ def unpin(
 
 
 @app.command()
+def quote(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to format"),
+    style: str = typer.Option("plain", "--style", "-s",
+                              help="Format: plain | markdown | bullet"),
+) -> None:
+    """Print a fact formatted for copy-paste into a chat or document.
+
+    Useful when you want to drop a stored fact into a Claude/Cursor/ChatGPT
+    conversation without retyping it. Touches the fact for ACT-R tracking.
+
+    Styles:
+      plain    - just the fact text, no formatting
+      markdown - quoted block with id citation
+      bullet   - markdown list item with tags inline
+
+    Examples:
+      anamne quote abc123
+      anamne quote abc123 --style markdown
+      anamne quote abc123 --style bullet
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    fact = store.get_fact(memory_id)
+    if fact is None:
+        console.print(f"[red]No fact found with id '{memory_id}'.[/red]")
+        raise typer.Exit(code=1)
+
+    text = fact["fact"]
+    tags = fact.get("tags") or []
+    if style == "markdown":
+        output = f"> {text}\n>\n> — *anamne fact `{memory_id}`*"
+    elif style == "bullet":
+        tag_str = (" [" + ", ".join(f"#{t}" for t in tags) + "]") if tags else ""
+        output = f"- {text}{tag_str}"
+    else:  # plain
+        output = text
+
+    # Print plain to stdout - no Rich markup so it's pipeable
+    print(output)
+    try:
+        store.touch_facts([memory_id])
+    except Exception:
+        pass
+
+
+@app.command()
+def mark(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to annotate"),
+    note: str = typer.Argument(..., help="Short note to attach as a history event"),
+) -> None:
+    """Attach a free-text note to a fact's audit history (without changing content).
+
+    The note shows up in `anamne history <id>` as a `note` change_type entry.
+    Useful for marginalia: "verified 2026-05-11" or "see also #1234".
+
+    Examples:
+      anamne mark abc123 "verified after 2026-05-01 review"
+      anamne mark abc123 "linked to ADR-042"
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    fact = store.get_fact(memory_id)
+    if fact is None:
+        console.print(f"[red]No fact found with id '{memory_id}'.[/red]")
+        raise typer.Exit(code=1)
+
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(store._db) as con:
+        con.execute(
+            "INSERT INTO fact_history "
+            "(fact_id, content, tags, changed_at, change_type, merged_into) "
+            "VALUES (?, ?, ?, ?, 'note', NULL)",
+            (memory_id, note, json.dumps(fact["tags"]), now),
+        )
+    console.print(f"\n  [green]Marked[/green] [cyan]{memory_id}[/cyan]  -  {note}\n")
+
+
+@app.command()
 def info(
     memory_id: str = typer.Argument(..., help="Scratchpad fact ID to inspect"),
 ) -> None:
@@ -1808,6 +1890,9 @@ def search(
     no_rank: bool = typer.Option(
         False, "--no-rank", help="Skip ACT-R ranking, use raw recency order"
     ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit machine-readable JSON instead of pretty text"
+    ),
 ) -> None:
     """Search scratchpad facts directly  - no LLM, no API key required.
 
@@ -1820,6 +1905,7 @@ def search(
       anamne search "python preference" --limit 5
       anamne search auth --tag security
       anamne search deploy --pinned    # only pinned facts matching "deploy"
+      anamne search auth --json        # pipe-friendly JSON
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
@@ -1836,6 +1922,10 @@ def search(
     if pinned_only:
         results = [f for f in results if f.get("pinned")]
     results = results[:limit]
+
+    if as_json:
+        console.print(json.dumps(results, indent=2, default=str))
+        return
 
     if not results:
         console.print(f"[dim]No scratchpad facts matching '[bold]{query}[/bold]'.[/dim]")

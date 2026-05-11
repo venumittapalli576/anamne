@@ -149,6 +149,7 @@ anamne ask "deployment decisions" --layer episodic --stream
 anamne search postgres
 anamne search "python preference" --limit 5 --tag backend
 anamne search deploy --pinned       # only pinned facts
+anamne search auth --json           # pipe-friendly JSON
 
 # Pure-semantic search (embeddings only, no substring match)
 anamne similar "why we picked our database"
@@ -208,6 +209,14 @@ anamne tag <memory-id> --set python --set testing   # replaces all tags
 # Pin a fact - protect it from auto-consolidation forever
 anamne pin <memory-id>
 anamne unpin <memory-id>    # remove protection
+
+# Print a fact ready to paste into another chat or document
+anamne quote <memory-id>                       # plain text
+anamne quote <memory-id> --style markdown      # blockquote + citation
+anamne quote <memory-id> --style bullet        # markdown list item
+
+# Attach an audit note to a fact (recorded in history, content unchanged)
+anamne mark <memory-id> "verified after 2026-05-01 review"
 
 # Ask the LLM which top-accessed facts deserve to be pinned
 anamne suggest-pins                # preview suggestions

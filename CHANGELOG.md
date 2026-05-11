@@ -4,6 +4,37 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.20.0] — 2026-05-11
+
+### Added - Phase 20
+
+**`anamne search --json`** - machine-readable search output
+- Pipe-friendly version of `anamne search`
+- Composes with `--tag`, `--pinned`, `--no-rank`, `--limit`
+- `anamne search auth --json | jq '.[].id'`
+
+**`anamne quote <id>`** - copy-paste-ready fact formatter
+- `--style plain` (default) - just the fact text
+- `--style markdown` - blockquote with id citation
+- `--style bullet` - markdown bullet with inline #tags
+- Touches the fact for ACT-R activation tracking
+
+**`anamne mark <id> "<note>"`** - audit annotation
+- Attaches a free-text note to the fact's history (`change_type='note'`)
+- The fact content is NOT modified; only the audit log gains an entry
+- Useful for marginalia: "verified 2026-05-11", "linked to ADR-042"
+- Visible via `anamne history <id>`
+
+### Fixed
+- `test_activation_formula_correctness` now waits 10ms after `touch_facts` to
+  avoid t==0 in the ACT-R formula on fast machines (same pattern as the
+  earlier `test_activation_increases_with_retrieval` fix)
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.19.0] — 2026-05-11
 
 ### Added - Phase 19

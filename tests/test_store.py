@@ -133,6 +133,7 @@ def test_activation_formula_correctness(store):
     """Verify the ACT-R formula: A = ln(sum(t_j^(-d)))."""
     mid = store.remember("test fact")
     store.touch_facts([mid])  # one retrieval just now
+    time.sleep(0.01)  # ensure t > 0 in ACT-R formula
 
     score = store.activation_score(mid, decay=0.5)
     # t is ~0 seconds but > 0; t^(-0.5) should be large positive

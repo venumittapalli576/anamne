@@ -267,13 +267,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 20 - Future ideas
+## What's Built (v0.20.0)
+
+| Feature | Status |
+|---|---|
+| `anamne search --json` - machine-readable search output | ✅ |
+| `anamne quote <id>` - copy-paste-ready fact formatter (plain/markdown/bullet) | ✅ |
+| `anamne mark <id> "note"` - free-text audit annotation in history | ✅ |
+| Flaky `test_activation_formula_correctness` fixed (10ms sleep) | ✅ |
+
+---
+
+## Phase 21 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne search --json`** - machine-readable search output
+- **`anamne shell`** - persistent REPL with command history
 
 ---
 
