@@ -2468,6 +2468,14 @@ def working(
         metavar="ID:MINUTES",
         help="Extend expiry of an existing note: --extend <id>:<extra_minutes>"
     ),
+    pin_id: Optional[str] = typer.Option(
+        None, "--pin", metavar="WORKING_ID",
+        help="Promote a working note to scratchpad AND pin it in one step"
+    ),
+    tag: list[str] = typer.Option(
+        [], "--tag", "-t",
+        help="Tags to attach when promoting via --pin"
+    ),
 ) -> None:
     """Manage working memory (short-lived session context).
 
@@ -2476,9 +2484,22 @@ def working(
       anamne working                          # list active notes
       anamne working --clear                  # wipe all
       anamne working --extend abc123:60       # add 60 more minutes to note abc123
+      anamne working --pin abc123 --tag db    # promote + pin in one step
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
+
+    if pin_id:
+        new_id = store.promote_working(pin_id, tags=tag or None)
+        if new_id is None:
+            console.print(f"[red]No working memory note with id: {pin_id}[/red]")
+            raise typer.Exit(code=1)
+        store.pin_fact(new_id)
+        console.print(
+            f"\n  [green]Promoted + pinned[/green]  "
+            f"[dim]{pin_id}[/dim] -> [cyan]{new_id}[/cyan]\n"
+        )
+        return
 
     if clear:
         n = store.working_clear()
@@ -3757,6 +3778,70 @@ def tag_stats(
             total_in_month = sum(month_tags[month].values())
             console.print(f"  [dim]{month}[/dim]  {total_in_month:3d} tag-uses  {top3}")
         console.print()
+
+
+@app.command()
+def tools(
+    as_json: bool = typer.Option(False, "--json", help="JSON output"),
+) -> None:
+    """List every tool the MCP server would expose to AI clients.
+
+    Useful for verifying which capabilities are wired up before connecting
+    Claude Code / Cursor / Cline.
+
+    Examples:
+      anamne tools
+      anamne tools --json
+    """
+    from anamne.mcp.server import mcp
+
+    # FastMCP keeps tool definitions on the server; introspect via list_tools()
+    try:
+        # FastMCP exposes a sync `list_tools()` helper on its tool manager
+        registry = getattr(mcp, "_tool_manager", None) or mcp
+        items = []
+        # Try several attribute names since FastMCP version may vary
+        listed = []
+        if hasattr(registry, "list_tools_sync"):
+            listed = registry.list_tools_sync()
+        elif hasattr(registry, "list_tools"):
+            try:
+                import inspect
+                res = registry.list_tools()
+                if inspect.iscoroutine(res):
+                    import asyncio
+                    listed = asyncio.run(res)
+                else:
+                    listed = res
+            except Exception:
+                listed = []
+        if not listed and hasattr(mcp, "_tools"):
+            listed = list(mcp._tools.values())
+        for t in listed or []:
+            name = getattr(t, "name", None) or (
+                t.get("name") if isinstance(t, dict) else str(t)
+            )
+            desc = getattr(t, "description", None) or (
+                t.get("description") if isinstance(t, dict) else ""
+            )
+            items.append({"name": name, "description": (desc or "").strip()})
+    except Exception as e:
+        console.print(f"[red]Could not introspect MCP tools:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    if not items:
+        console.print("\n  [dim]No MCP tools detected.[/dim]\n")
+        return
+
+    if as_json:
+        console.print(json.dumps(items, indent=2))
+        return
+
+    console.print(f"\n  [bold]{len(items)} MCP tool(s):[/bold]\n")
+    for it in items:
+        first_line = (it["description"] or "").splitlines()[0][:80]
+        console.print(f"  [cyan]{it['name']:30}[/cyan]  [dim]{first_line}[/dim]")
+    console.print()
 
 
 @app.command()

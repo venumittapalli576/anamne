@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.33.0] — 2026-05-11
+
+### Added - Phase 33
+
+**`anamne working --pin <working_id>`** - promote and pin in one step
+- `anamne working --pin abc123 --tag db` moves a working note to scratchpad
+  and pins it atomically
+- Two-call shortcut for the most common "this turned out to be permanent"
+  workflow
+
+**`anamne tools`** - list every MCP tool the server exposes
+- Prints each tool name + first-line description
+- `--json` for machine-readable output
+- Lets you verify Claude/Cursor will see the expected capabilities before
+  wiring up `mcp-server`
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.32.0] — 2026-05-11
 
 ### Added - Phase 32

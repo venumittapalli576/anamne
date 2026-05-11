@@ -186,6 +186,9 @@ anamne working
 anamne working "currently debugging the auth middleware"
 anamne working "debugging login flow" --ttl 120  # 2 hours
 
+# Promote a working note to scratchpad AND pin it in one step
+anamne working --pin <working-id> --tag db
+
 # Search working memory notes
 anamne search-working "debug"
 
@@ -431,6 +434,10 @@ through shared tags (bipartite layout, pure JS, no D3).
 
 ```bash
 anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
+
+# Introspect which tools are wired up before connecting an MCP client
+anamne tools
+anamne tools --json
 ```
 
 ---

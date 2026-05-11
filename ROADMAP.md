@@ -404,13 +404,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 33 - Future ideas
+## What's Built (v0.33.0)
+
+| Feature | Status |
+|---|---|
+| `anamne working --pin <id>` - promote + pin in one step | ✅ |
+| `anamne tools` - list MCP tool surface (`--json` supported) | ✅ |
+| 21 MCP tools detected by introspection | ✅ |
+
+---
+
+## Phase 34 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **`anamne quiz --resume`** - continue an unfinished quiz session
-- **`anamne mcp tools-list`** - introspect the running MCP tool surface
-- **`anamne working --pin`** - convert a working note into a pinned scratchpad fact
+- **`anamne working --to-fact`** - promote without pinning (alias for promote)
+- **`anamne tools --schema <name>`** - dump full JSON schema for one tool
 
 ---
 
