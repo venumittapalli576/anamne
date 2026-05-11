@@ -369,6 +369,114 @@ def watch(
             break
 
 
+@app.command(name="watch-repos")
+def watch_repos(
+    repos: list[Path] = typer.Argument(
+        ..., help="Git repository paths to watch (space-separated)"
+    ),
+    interval: int = typer.Option(
+        300, "--interval", "-i",
+        help="Seconds between sync checks (default: 5 min)"
+    ),
+    max_commits: int = typer.Option(
+        50, "--max-commits", help="Max commits per sync run"
+    ),
+) -> None:
+    """Watch one or more git repos and auto-sync new commits as they land.
+
+    Polls each repo on a schedule, calling `anamne sync` only when new
+    commits are detected. Ideal for running after `git pull` in CI or
+    as a background daemon after active development sessions.
+
+    Press Ctrl+C to stop.
+
+    Examples:
+      anamne watch-repos ./my-project
+      anamne watch-repos ./frontend ./backend --interval 120
+    """
+    import time as _time
+
+    _require_api_key()
+    from anamne.agents.historian import HistorianAgent
+    from anamne.store.graph import DecisionStore
+
+    if not repos:
+        console.print("[red]Specify at least one repo path.[/red]")
+        raise typer.Exit(1)
+
+    # Validate paths upfront
+    valid_repos = []
+    for rp in repos:
+        rp = rp.resolve()
+        if not (rp / ".git").exists():
+            console.print(f"[yellow]Not a git repo (skipping): {rp}[/yellow]")
+        else:
+            valid_repos.append(rp)
+
+    if not valid_repos:
+        console.print("[red]No valid git repos to watch.[/red]")
+        raise typer.Exit(1)
+
+    store = DecisionStore()
+    historian = HistorianAgent(store=store)
+
+    repo_labels = ", ".join(str(r) for r in valid_repos)
+    console.print(
+        f"\n[bold green]Watching repos[/bold green]: {repo_labels}\n"
+        f"Polling every [bold]{interval}s[/bold]. Press [dim]Ctrl+C[/dim] to stop.\n"
+    )
+
+    # Track commit counts so we can detect new activity
+    prev_counts: dict[str, int] = {
+        str(r): store.indexed_commit_count(str(r)) for r in valid_repos
+    }
+
+    check = 0
+    while True:
+        check += 1
+        synced_any = False
+        for rp in valid_repos:
+            rp_str = str(rp)
+            try:
+                from git import Repo as _Repo
+                git_repo = _Repo(rp_str)
+                # Count total commits in the repo
+                total_commits = sum(1 for _ in git_repo.iter_commits())
+                indexed = store.indexed_commit_count(rp_str)
+
+                if total_commits > indexed:
+                    new_count = total_commits - indexed
+                    console.print(
+                        f"[cyan]{rp.name}[/cyan]: "
+                        f"{new_count} new commit(s) detected  - syncing..."
+                    )
+                    historian.index_repo(
+                        rp_str, max_commits=max_commits, incremental=True
+                    )
+                    new_indexed = store.indexed_commit_count(rp_str)
+                    delta = new_indexed - indexed
+                    console.print(
+                        f"  [green]Indexed {delta} commit(s)[/green] "
+                        f"({new_indexed} total)"
+                    )
+                    synced_any = True
+                else:
+                    console.print(
+                        f"[dim][check {check}] {rp.name}: no new commits[/dim]"
+                    )
+            except Exception as e:
+                console.print(f"[red]Error checking {rp.name}: {e}[/red]")
+
+        if not synced_any:
+            pass  # already printed per-repo status above
+
+        try:
+            _time.sleep(interval)
+        except KeyboardInterrupt:
+            console.print("\n[dim]watch-repos stopped.[/dim]")
+            break
+
+
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="Your WHY question about the codebase"),
@@ -394,11 +502,21 @@ def remember(
         help="Use LLM to extract multiple structured facts from long input "
              "(LIGHT-style key-value distillation)"
     ),
+    auto_tag: bool = typer.Option(
+        False, "--auto-tag", "-a",
+        help="Ask the LLM to suggest tags automatically (uses API key)"
+    ),
 ) -> None:
     """Store a fact in scratchpad memory.
 
     Short text -> stored verbatim.
     Long text + --distill -> LLM extracts multiple structured facts.
+    --auto-tag -> LLM suggests tags (ignored if --tag is already provided).
+
+    Examples:
+      anamne remember "I prefer Postgres over MySQL"
+      anamne remember "I prefer Postgres over MySQL" --auto-tag
+      anamne remember "I prefer Postgres over MySQL" --tag db --tag backend
     """
     from anamne.store.graph import DecisionStore
     store = DecisionStore()
@@ -432,14 +550,31 @@ def remember(
             extracted = [fact]
 
         for f in extracted:
-            mem_id = store.remember(f.strip(), tags=tag or None)
+            final_tags = list(tag)
+            if auto_tag and not tag:
+                _require_api_key()
+                from anamne.agents.oracle import OracleAgent
+                suggested = OracleAgent(store=store).suggest_tags(f.strip())
+                final_tags = suggested
+                if suggested:
+                    console.print(f"[dim]  auto-tags: {', '.join(suggested)}[/dim]")
+            mem_id = store.remember(f.strip(), tags=final_tags or None)
             console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {f}")
         console.print(f"\n[dim]Stored {len(extracted)} fact(s) from input.[/dim]")
     else:
-        mem_id = store.remember(fact, tags=tag or None)
+        final_tags = list(tag)
+        if auto_tag and not tag:
+            _require_api_key()
+            from anamne.agents.oracle import OracleAgent
+            console.print("[dim]Suggesting tags...[/dim]")
+            suggested = OracleAgent(store=store).suggest_tags(fact)
+            final_tags = suggested
+            if suggested:
+                console.print(f"[dim]  auto-tags: {', '.join(suggested)}[/dim]")
+        mem_id = store.remember(fact, tags=final_tags or None)
         console.print(f"[green]Remembered[/green] [dim]({mem_id})[/dim]: {fact}")
-        if tag:
-            console.print(f"[dim]  tags: {', '.join(tag)}[/dim]")
+        if final_tags:
+            console.print(f"[dim]  tags: {', '.join(final_tags)}[/dim]")
 
 
 @app.command()
@@ -1748,6 +1883,24 @@ def status() -> None:
 
     if repos:
         table.add_row("Repos", "\n".join(repos))
+
+    # Top-tags breakdown
+    if fact_count > 0:
+        from collections import Counter
+        all_facts = store.list_facts(limit=10_000)
+        tag_counter: Counter = Counter()
+        untagged = 0
+        for f in all_facts:
+            if f.get("tags"):
+                tag_counter.update(f["tags"])
+            else:
+                untagged += 1
+        if tag_counter:
+            top = tag_counter.most_common(8)
+            tag_summary = "  ".join(f"[cyan]{t}[/cyan]:{n}" for t, n in top)
+            if untagged:
+                tag_summary += f"  [dim](+{untagged} untagged)[/dim]"
+            table.add_row("Top tags", tag_summary)
 
     console.print()
     console.print(table)

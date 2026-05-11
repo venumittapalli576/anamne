@@ -107,8 +107,11 @@ Data is stored in `~/.anamne/` — SQLite + ChromaDB. Nothing leaves your machin
 anamne remember "we deploy on Fridays before 2pm only"
 anamne remember "prefer pytest over unittest" --tag python --tag testing
 
+# Let the LLM suggest tags automatically (learns from your existing tags)
+anamne remember "we use FastAPI for all new services" --auto-tag
+
 # Extract multiple structured facts from a long blob of text (LLM-distilled)
-anamne remember "long paste of meeting notes..." --distill
+anamne remember "long paste of meeting notes..." --distill --auto-tag
 
 # Log a timestamped journal entry (auto-tagged 'journal')
 anamne journal "Switched payment processor because Stripe fees hit 3%"
@@ -189,6 +192,10 @@ anamne sync ./my-project
 # Background consolidation daemon — periodically merges redundant facts
 anamne watch                   # runs every hour
 anamne watch --interval 1800   # every 30 minutes
+
+# Watch git repos and auto-sync new commits as they land
+anamne watch-repos ./my-project
+anamne watch-repos ./frontend ./backend --interval 120   # check every 2 min
 
 # Export all memories to JSON or Markdown (for backup / migration)
 anamne export --output backup.json

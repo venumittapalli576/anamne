@@ -115,13 +115,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 7 — Future ideas
+## What's Built (v0.7.0)
 
-- **Browser extension** — "Remember this?" prompt on pages you read
-- **Scheduled auto-sync** — `anamne watch-repos` daemon watches N repos and calls `sync` on change
-- **`anamne import-web --site`** — crawl an entire documentation site and distill facts
-- **Tag auto-suggest** — LLM proposes tags when you `remember` without specifying any
-- **Fact graph view** — visualise tag clusters and fact relationships in the UI
+| Feature | Status |
+|---|---|
+| `remember --auto-tag` - LLM suggests tags automatically | ✅ |
+| `anamne watch-repos` daemon - poll git repos and auto-sync on new commits | ✅ |
+| Enhanced `status` with top-tags breakdown | ✅ |
+
+---
+
+## Phase 8 - Future ideas
+
+- **Browser extension** - "Remember this?" prompt on pages you read
+- **`anamne import-web --site`** - crawl an entire docs site and distill facts
+- **Fact graph view** - force-directed graph of facts by shared tags in the web UI
+- **`anamne reminder`** - schedule a reminder that pops a working-memory note at a time
+- **Multi-user sharing** - export/import signed bundles with provenance
 
 ---
 

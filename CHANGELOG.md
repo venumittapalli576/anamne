@@ -4,6 +4,33 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.7.0] — 2026-05-11
+
+### Added - Phase 7
+
+**Tag auto-suggest** (`--auto-tag` flag on `remember`)
+- `anamne remember "some fact" --auto-tag` - LLM proposes 1-4 tags based on content
+- Learns from existing tags already in use for consistency
+- Works with `--distill` too: each extracted fact gets auto-tagged individually
+- Ignored when `--tag` is already provided (manual tags take precedence)
+- New `OracleAgent.suggest_tags(fact)` method
+
+**`anamne watch-repos`** - auto-sync daemon for git repos
+- `anamne watch-repos ./frontend ./backend --interval 120`
+- Polls repos on a schedule, calls incremental sync only when new commits detected
+- Validates paths upfront; skips non-git directories with a warning
+- Reports per-repo commit deltas and total indexed count
+
+**Enhanced `status` command**
+- Now shows a **Top tags** row: `python:12  db:7  ops:5  (+3 untagged)`
+- Quick overview of how your scratchpad is organized without running `facts`
+
+### Tests
+- 66 tests total, all passing
+- (watch-repos and auto-tag are CLI-level features tested manually)
+
+---
+
 ## [0.6.1] — 2026-05-11
 
 ### Fixed

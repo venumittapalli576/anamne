@@ -235,8 +235,55 @@ class OracleAgent:
 
         return merges
 
+    def suggest_tags(self, fact: str, max_tags: int = 4) -> list[str]:
+        """Ask the LLM to suggest 1-4 short tags for a fact.
+
+        Returns a list of lowercase single-word tags (or hyphenated phrases).
+        Falls back to an empty list on any error so callers can always proceed.
+        """
+        import json as _json
+
+        # Use existing tags as context for consistency
+        existing_tags: list[str] = []
+        try:
+            existing_tags = sorted({
+                t
+                for f in self._store.list_facts(limit=200)
+                for t in f.get("tags", [])
+            })
+        except Exception:
+            pass
+
+        tag_hint = (
+            f"\nExisting tags in use (prefer reusing these when relevant): "
+            f"{', '.join(existing_tags[:20])}"
+            if existing_tags else ""
+        )
+
+        prompt = (
+            f"Suggest 1-{max_tags} short, lowercase tags for this fact.\n"
+            "Tags should be single words or hyphenated phrases (e.g. 'python', 'backend', 'ci-cd').\n"
+            "Return ONLY a JSON array of strings, no explanation.\n"
+            f"{tag_hint}\n\n"
+            f"Fact: {fact}\n\n"
+            "JSON array:"
+        )
+
+        try:
+            raw = self._llm.complete(prompt, max_tokens=60).text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                if raw.startswith("json"):
+                    raw = raw[4:].strip()
+            tags = _json.loads(raw)
+            if isinstance(tags, list):
+                return [str(t).lower().strip() for t in tags if t][:max_tags]
+        except Exception:
+            pass
+        return []
+
     # ------------------------------------------------------------------ #
-    # ACC — bounded context compression                                     #
+    # ACC - bounded context compression                                     #
     # ------------------------------------------------------------------ #
 
     def _compress_tail(self, tail: list[Decision], question: str) -> str:
