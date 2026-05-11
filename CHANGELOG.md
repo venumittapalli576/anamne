@@ -4,6 +4,18 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.3.1] — 2026-05-11
+
+### Added
+- `anamne --version` / `anamne -V` — print version and exit
+
+### Fixed
+- `SECURITY.md`, issue templates, and PR template added for open-source hygiene
+- PyPI + CI badges in README
+- `.gitattributes` for consistent cross-platform line endings
+
+---
+
 ## [0.3.0] — 2026-05-10
 
 ### Added — Phase 3 memory upgrades

@@ -45,6 +45,14 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from anamne import __version__
+        console = Console()
+        console.print(f"[bold green]anamne[/bold green] {__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="anamne",
     help="[bold green]ANAMNE[/bold green] - Brain-inspired personal memory layer for AI tools.",
@@ -53,11 +61,23 @@ app = typer.Typer(
     add_completion=False,
 )
 
+
+@app.callback()
+def _main(
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    pass
+
 console = Console()
 
 _BANNER = """[bold green]
 ╔═══════════════════════════════════════╗
-║   A N A M N E   v0.3.0               ║
+║   A N A M N E   v0.3.1               ║
 ║   Brain-inspired personal memory      ║
 ║   layer for AI tools.                 ║
 ╚═══════════════════════════════════════╝[/bold green]"""
