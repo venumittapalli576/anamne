@@ -120,6 +120,10 @@ anamne journal "Switched payment processor because Stripe fees hit 3%"
 anamne import-web https://example.com/architecture-decisions
 anamne import-web https://docs.example.com --limit 10 --dry-run
 
+# Crawl an entire site - follows same-domain links (BFS), deduplicates across pages
+anamne import-web https://docs.example.com --crawl
+anamne import-web https://docs.example.com --crawl --max-pages 50 --limit 10
+
 # Import facts from an exported Claude or ChatGPT conversation
 anamne import-chat ~/Downloads/conversations.json
 anamne import-chat session.txt --source text --dry-run  # preview first
@@ -206,6 +210,9 @@ anamne clear scratchpad        # or: working | episodic | all
 
 # Show memory stats
 anamne status
+
+# Detailed analytics: most-accessed facts, creation histogram, ACT-R summary, tag breakdown
+anamne stats
 ```
 
 ### Backup, restore, and sharing
@@ -237,7 +244,9 @@ anamne ui --port 9000 --no-browser
 ```
 
 The dashboard shows all scratchpad facts with tag/text filtering, ACT-R activation scores,
-a live search tab, working memory, indexed repos, and a per-fact history modal.
+a live search tab, working memory, indexed repos, a per-fact history modal, and a
+**Fact Graph** tab — a force-directed SVG visualization of facts as nodes connected
+through shared tags (bipartite layout, pure JS, no D3).
 
 ### MCP server
 

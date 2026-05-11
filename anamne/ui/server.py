@@ -65,6 +65,44 @@ class _Handler(BaseHTTPRequestHandler):
             for f in results:
                 f["activation"] = round(self.store.activation_score(f["id"]), 4)
             self._send_json(results)
+        elif path == "/api/graph":
+            limit = int(qs.get("limit", [200])[0])
+            facts = self.store.list_facts(limit=limit, tags=None)
+            # Build bipartite graph: fact nodes + tag nodes (tags on >=2 facts)
+            from collections import defaultdict as _dd
+            tag_facts: dict = _dd(list)
+            for f in facts:
+                for t in (f.get("tags") or []):
+                    tag_facts[t].append(f["id"])
+            multi_tags = {t for t, fids in tag_facts.items() if len(fids) >= 2}
+            nodes = []
+            for f in facts:
+                if any(t in multi_tags for t in (f.get("tags") or [])):
+                    nodes.append({
+                        "id": f["id"],
+                        "type": "fact",
+                        "label": f["fact"][:50] + ("..." if len(f["fact"]) > 50 else ""),
+                        "full": f["fact"],
+                        "tags": f.get("tags") or [],
+                        "activation": round(self.store.activation_score(f["id"]), 4),
+                    })
+            for t in sorted(multi_tags):
+                nodes.append({
+                    "id": f"tag:{t}",
+                    "type": "tag",
+                    "label": t,
+                    "full": f"#{t}  ({len(tag_facts[t])} facts)",
+                    "tags": [],
+                    "activation": 0,
+                })
+            fact_ids = {n["id"] for n in nodes if n["type"] == "fact"}
+            edges = [
+                {"source": fid, "target": f"tag:{t}"}
+                for t in multi_tags
+                for fid in tag_facts[t]
+                if fid in fact_ids
+            ]
+            self._send_json({"nodes": nodes, "edges": edges})
         else:
             self.send_response(404)
             self.end_headers()
@@ -103,7 +141,7 @@ def run_ui(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True)
     server = HTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}"
 
-    print(f"\n  ANAMNE UI  →  {url}\n  Press Ctrl+C to stop.\n")
+    print(f"\n  ANAMNE UI  ->  {url}\n  Press Ctrl+C to stop.\n")
 
     if open_browser:
         # Open after a short delay so the server is ready
@@ -182,6 +220,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   #modal .close { float: right; cursor: pointer; color: var(--muted); font-size: 18px; }
   .spinner { color: var(--muted); font-size: 13px; padding: 32px; text-align: center; }
   .repo-tag { background: rgba(255,166,87,.12); color: var(--orange); border-radius: 4px; padding: 1px 7px; font-size: 11px; }
+  #graph-wrap { width: 100%; height: calc(100vh - 140px); min-height: 480px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative; }
+  #graph-svg { width: 100%; height: 100%; }
+  #graph-tip { position: absolute; background: #1c2128; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 12px; max-width: 300px; pointer-events: none; display: none; z-index: 5; line-height: 1.4; }
+  .graph-legend { display: flex; gap: 18px; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+  .graph-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .legend-sq { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 </style>
 </head>
 <body>
@@ -200,6 +245,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <button onclick="showTab('search', this)">🔍  Search</button>
     <button onclick="showTab('working', this)">⚡  Working Memory</button>
     <button onclick="showTab('repos', this)">📦  Indexed Repos</button>
+    <button onclick="showTab('graph', this)">🕸️  Fact Graph</button>
   </nav>
   <div class="content" id="content">
     <div class="spinner">Loading…</div>
@@ -225,6 +271,7 @@ function showTab(tab, btn) {
   else if (tab === 'search') loadSearch();
   else if (tab === 'working') loadWorking();
   else if (tab === 'repos') loadRepos();
+  else if (tab === 'graph') loadGraph();
 }
 
 function fmtDate(iso) {
@@ -379,6 +426,188 @@ function closeModal(e) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ---- Fact Graph ----
+let _graphRAF = null;
+
+async function loadGraph() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="graph-legend">
+      <span><span class="legend-dot" style="background:var(--accent)"></span> Scratchpad fact</span>
+      <span><span class="legend-sq" style="background:var(--orange)"></span> Tag (shared by 2+ facts)</span>
+      <span style="margin-left:auto;color:var(--muted)">Hover for details &nbsp;·&nbsp; Drag to reposition</span>
+    </div>
+    <div id="graph-wrap">
+      <div id="graph-tip"></div>
+      <svg id="graph-svg"></svg>
+    </div>`;
+
+  const data = await api('/api/graph');
+  if (!data.nodes || data.nodes.length === 0) {
+    document.getElementById('graph-wrap').innerHTML =
+      '<div class="empty" style="padding:64px">No tagged facts yet — add facts with tags to see the graph.</div>';
+    return;
+  }
+
+  const wrap = document.getElementById('graph-wrap');
+  const svg = document.getElementById('graph-svg');
+  const tip = document.getElementById('graph-tip');
+  let W = wrap.clientWidth || 900, H = wrap.clientHeight || 560;
+
+  // Init node positions randomly around center
+  const ns = data.nodes.map(n => ({
+    ...n,
+    x: W/2 + (Math.random()-.5)*300,
+    y: H/2 + (Math.random()-.5)*300,
+    vx: 0, vy: 0,
+    r: n.type === 'fact' ? 7 : 10,
+  }));
+  const idIdx = Object.fromEntries(ns.map((n,i) => [n.id, i]));
+  const es = data.edges
+    .map(e => ({ s: idIdx[e.source], t: idIdx[e.target] }))
+    .filter(e => e.s !== undefined && e.t !== undefined);
+
+  // Force constants
+  const K_REP = 1200, K_SPRING = 0.06, REST = 90, DAMP = 0.82, GRAV = 0.0018;
+
+  function tick() {
+    // Repulsion between all pairs
+    for (let i = 0; i < ns.length; i++) {
+      for (let j = i+1; j < ns.length; j++) {
+        const dx = ns[j].x - ns[i].x, dy = ns[j].y - ns[i].y;
+        const d2 = dx*dx + dy*dy + 1;
+        const f = K_REP / d2;
+        const d = Math.sqrt(d2);
+        ns[i].vx -= f*dx/d; ns[i].vy -= f*dy/d;
+        ns[j].vx += f*dx/d; ns[j].vy += f*dy/d;
+      }
+    }
+    // Spring along edges
+    for (const e of es) {
+      const a = ns[e.s], b = ns[e.t];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.sqrt(dx*dx + dy*dy) || 1;
+      const f = (d - REST) * K_SPRING;
+      const fx = f*dx/d, fy = f*dy/d;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    }
+    // Gravity toward center + integrate + clamp
+    for (const n of ns) {
+      n.vx += (W/2 - n.x)*GRAV; n.vy += (H/2 - n.y)*GRAV;
+      n.vx *= DAMP; n.vy *= DAMP;
+      n.x += n.vx; n.y += n.vy;
+      n.x = Math.max(n.r+2, Math.min(W-n.r-2, n.x));
+      n.y = Math.max(n.r+2, Math.min(H-n.r-2, n.y));
+    }
+  }
+
+  // SVG namespaced element helper
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs) {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k,v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  }
+
+  // Build SVG elements once
+  const edgeEls = es.map(() => el('line', {stroke:'#30363d', 'stroke-width':'1.2'}));
+  const nodeEls = ns.map(n => {
+    if (n.type === 'fact') {
+      return el('circle', {r: n.r, fill:'var(--accent)', opacity:'0.85', cursor:'pointer', style:'transition:opacity .1s'});
+    } else {
+      const s = n.r*2; // square side
+      return el('rect', {width:s, height:s, rx:'3', fill:'var(--orange)', opacity:'0.85', cursor:'pointer'});
+    }
+  });
+  const labelEls = ns.map(n => {
+    const t = el('text', {
+      'font-size': n.type === 'tag' ? '11' : '10',
+      fill: n.type === 'tag' ? 'var(--orange)' : 'var(--muted)',
+      'pointer-events': 'none',
+      'text-anchor': 'middle',
+    });
+    t.textContent = n.type === 'tag' ? '#'+n.label : '';
+    return t;
+  });
+
+  svg.innerHTML = '';
+  const gEdge = el('g', {}); edgeEls.forEach(e => gEdge.appendChild(e)); svg.appendChild(gEdge);
+  const gNode = el('g', {}); nodeEls.forEach(e => gNode.appendChild(e)); svg.appendChild(gNode);
+  const gLabel = el('g', {}); labelEls.forEach(e => gLabel.appendChild(e)); svg.appendChild(gLabel);
+
+  // Tooltip + hover
+  nodeEls.forEach((ne, i) => {
+    ne.addEventListener('mouseenter', (ev) => {
+      ne.setAttribute('opacity','1');
+      const n = ns[i];
+      tip.innerHTML = n.type === 'tag'
+        ? `<b style="color:var(--orange)">#${n.label}</b><br>${n.full}`
+        : `<span style="color:var(--accent);font-size:11px">${n.id}</span><br>${escHtml(n.full)}<br>` +
+          (n.tags.length ? `<span style="color:var(--muted)">${n.tags.map(t=>'#'+t).join(' ')}</span>` : '');
+      tip.style.display = 'block';
+    });
+    ne.addEventListener('mousemove', (ev) => {
+      const bx = wrap.getBoundingClientRect();
+      let lx = ev.clientX - bx.left + 14, ly = ev.clientY - bx.top + 14;
+      if (lx + 310 > W) lx = ev.clientX - bx.left - 320;
+      tip.style.left = lx+'px'; tip.style.top = ly+'px';
+    });
+    ne.addEventListener('mouseleave', () => { ne.setAttribute('opacity','0.85'); tip.style.display='none'; });
+
+    // Drag
+    let dragging = false, dox=0, doy=0;
+    ne.addEventListener('mousedown', (ev) => {
+      dragging = true; dox = ev.clientX - ns[i].x; doy = ev.clientY - ns[i].y;
+      ev.preventDefault();
+    });
+    document.addEventListener('mousemove', (ev) => {
+      if (!dragging) return;
+      const bx = wrap.getBoundingClientRect();
+      ns[i].x = ev.clientX - bx.left; ns[i].y = ev.clientY - bx.top;
+      ns[i].vx = 0; ns[i].vy = 0;
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  });
+
+  function render() {
+    edgeEls.forEach((le, i) => {
+      const a = ns[es[i].s], b = ns[es[i].t];
+      le.setAttribute('x1',a.x); le.setAttribute('y1',a.y);
+      le.setAttribute('x2',b.x); le.setAttribute('y2',b.y);
+    });
+    nodeEls.forEach((ne, i) => {
+      const n = ns[i];
+      if (n.type === 'fact') {
+        ne.setAttribute('cx', n.x); ne.setAttribute('cy', n.y);
+      } else {
+        const s = n.r*2;
+        ne.setAttribute('x', n.x-n.r); ne.setAttribute('y', n.y-n.r);
+      }
+    });
+    labelEls.forEach((le, i) => {
+      const n = ns[i];
+      le.setAttribute('x', n.x);
+      le.setAttribute('y', n.y + n.r + 11);
+    });
+  }
+
+  if (_graphRAF) cancelAnimationFrame(_graphRAF);
+  let frame = 0;
+  function loop() {
+    tick(); render();
+    frame++;
+    if (frame < 400) _graphRAF = requestAnimationFrame(loop);
+    else { tick(); render(); } // settle
+  }
+  loop();
+
+  // Re-layout on resize
+  window.addEventListener('resize', () => {
+    W = wrap.clientWidth || 900; H = wrap.clientHeight || 560;
+  }, {once: true});
 }
 
 // ---- Init ----

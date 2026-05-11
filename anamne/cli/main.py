@@ -26,6 +26,7 @@ Working memory (session-scoped):
   working           - add/list/clear short-lived context notes
 
 Maintenance:
+  stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
   clear             - wipe an entire memory layer (scratchpad|working|episodic|all)
   watch             - auto-consolidation daemon (runs periodically)
 
@@ -1025,112 +1026,211 @@ def import_chat(
 @app.command(name="import-web")
 def import_web(
     url: str = typer.Argument(..., help="URL to fetch and distill facts from"),
-    limit: int = typer.Option(15, "--limit", "-n", help="Max facts to extract"),
+    limit: int = typer.Option(15, "--limit", "-n", help="Max facts to extract per page"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show facts without storing"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Extra tag(s) to apply"),
+    crawl: bool = typer.Option(
+        False, "--crawl", help="Crawl the entire site (follow links within same domain)"
+    ),
+    max_pages: int = typer.Option(
+        20, "--max-pages", help="Max pages to crawl when --crawl is set"
+    ),
 ) -> None:
     """Scrape a web page and distill key facts into scratchpad memory.
 
-    Fetches the URL, strips HTML, then uses the LLM to extract facts worth
-    keeping: technical decisions, reference info, architecture notes.
+    With --crawl: follows all links within the same domain and distils facts
+    from every page visited (up to --max-pages).
 
     The domain name is auto-added as a tag so you can filter later.
 
     Examples:
       anamne import-web https://12factor.net
       anamne import-web https://docs.python.org/3/library/asyncio.html --limit 10
+      anamne import-web https://docs.example.com --crawl --max-pages 30
       anamne import-web https://example.com/adr/001 --tag architecture --dry-run
     """
     _require_api_key()
-
-    console.print(f"\n[bold]Fetching[/bold] [cyan]{url}[/cyan] ...\n")
-
-    # Fetch the page
-    try:
-        import httpx
-        response = httpx.get(
-            url,
-            follow_redirects=True,
-            timeout=20,
-            headers={"User-Agent": "anamne/0.5.0 (fact-distiller)"},
-        )
-        response.raise_for_status()
-        html = response.text
-    except Exception as e:
-        console.print(f"[red]Fetch failed:[/red] {e}")
-        raise typer.Exit(1)
-
-    # Strip HTML -> plain text using stdlib html.parser
-    page_text = _strip_html(html)
-    if len(page_text) < 100:
-        console.print("[yellow]Page has very little text content.[/yellow]")
-        raise typer.Exit(1)
-
-    # Extract domain for auto-tagging
-    from urllib.parse import urlparse as _urlparse
-    domain = _urlparse(url).netloc.lstrip("www.")
-
-    console.print(
-        f"[dim]Extracted {len(page_text):,} chars  - distilling up to {limit} facts...[/dim]\n"
-    )
+    import httpx
+    import json as _json
+    from urllib.parse import urlparse as _urlparse, urljoin, urldefrag
 
     from anamne.llm import LLMClient
-    import json as _json
+    from anamne.store.graph import DecisionStore
 
     llm = LLMClient()
-    prompt = (
-        "You are reading a web page. Extract durable facts worth keeping long-term  - "
-        "things that are still useful weeks or months from now.\n\n"
-        "Keep:\n"
-        "- Core concepts, design principles, or architectural patterns described\n"
-        "- Specific technical decisions or recommendations on the page\n"
-        "- Important constraints, gotchas, or best practices\n"
-        "- Reference info that would be useful to recall later\n\n"
-        "Skip:\n"
-        "- Navigation, menus, footers, ads, boilerplate\n"
-        "- Facts that are obvious or common knowledge\n"
-        "- Very detailed implementation steps (summarise instead)\n\n"
-        f"Page URL: {url}\n"
-        f"Page text (truncated):\n{page_text[:10000]}\n\n"
-        f"Return ONLY a JSON array of up to {limit} concise fact strings.\n"
-        "Example: [\"asyncio uses a single-threaded event loop\", \"await suspends the coroutine\"]\n"
-        "JSON array:"
-    )
+    store = DecisionStore()
 
-    try:
-        raw_response = llm.complete(prompt, max_tokens=1024).text.strip()
-        if raw_response.startswith("```"):
-            raw_response = raw_response.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            if raw_response.startswith("json"):
-                raw_response = raw_response[4:].strip()
-        extracted: list[str] = _json.loads(raw_response)
-        if not isinstance(extracted, list):
-            raise ValueError("Expected JSON array")
-    except Exception as e:
-        console.print(f"[red]Extraction failed ({e}).[/red]")
-        raise typer.Exit(1)
+    parsed_start = _urlparse(url)
+    domain = parsed_start.netloc.lstrip("www.")
+    base_tags = list({domain, "web-import", *tag})
 
-    if not extracted:
-        console.print("[yellow]No durable facts found on this page.[/yellow]")
+    # Existing facts for dedup (avoid storing identical facts twice during crawl)
+    existing_facts: set[str] = {
+        f["fact"].strip() for f in store.list_facts(limit=100_000)
+    }
+
+    def _fetch_html(u: str) -> str | None:
+        try:
+            r = httpx.get(
+                u, follow_redirects=True, timeout=20,
+                headers={"User-Agent": "anamne/0.8.0 (fact-distiller)"},
+            )
+            r.raise_for_status()
+            return r.text
+        except Exception as exc:
+            console.print(f"  [dim]skip ({exc})[/dim]")
+            return None
+
+    def _extract_links(html: str, base_url: str) -> list[str]:
+        """Return same-domain absolute links from an HTML page."""
+        from html.parser import HTMLParser
+
+        class _LinkParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links: list[str] = []
+
+            def handle_starttag(self, t, attrs):
+                if t == "a":
+                    href = dict(attrs).get("href", "")
+                    if href:
+                        self.links.append(href)
+
+        p = _LinkParser()
+        p.feed(html)
+        result = []
+        base_netloc = _urlparse(base_url).netloc
+        for href in p.links:
+            href, _ = urldefrag(href)
+            abs_url = urljoin(base_url, href)
+            pabs = _urlparse(abs_url)
+            if pabs.netloc == base_netloc and pabs.scheme in ("http", "https"):
+                result.append(abs_url)
+        return result
+
+    def _distil_page(page_url: str, html: str) -> list[str]:
+        text = _strip_html(html)
+        if len(text) < 100:
+            return []
+        prompt = (
+            "You are reading a web page. Extract durable facts worth keeping long-term.\n\n"
+            "Keep: core concepts, design principles, technical decisions, best practices, "
+            "important constraints or gotchas.\n"
+            "Skip: navigation, ads, boilerplate, obvious/common-knowledge facts.\n\n"
+            f"Page URL: {page_url}\n"
+            f"Page text (truncated):\n{text[:10000]}\n\n"
+            f"Return ONLY a JSON array of up to {limit} concise fact strings.\n"
+            "JSON array:"
+        )
+        try:
+            raw = llm.complete(prompt, max_tokens=1024).text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                if raw.startswith("json"):
+                    raw = raw[4:].strip()
+            result = _json.loads(raw)
+            return result if isinstance(result, list) else []
+        except Exception:
+            return []
+
+    # ----- Single-page mode -----
+    if not crawl:
+        console.print(f"\n[bold]Fetching[/bold] [cyan]{url}[/cyan] ...\n")
+        html = _fetch_html(url)
+        if not html:
+            console.print("[red]Fetch failed.[/red]")
+            raise typer.Exit(1)
+        page_text = _strip_html(html)
+        if len(page_text) < 100:
+            console.print("[yellow]Page has very little text content.[/yellow]")
+            raise typer.Exit(1)
+        console.print(
+            f"[dim]Extracted {len(page_text):,} chars  - distilling up to {limit} facts...[/dim]\n"
+        )
+        extracted = _distil_page(url, html)
+        if not extracted:
+            console.print("[yellow]No durable facts found on this page.[/yellow]")
+            return
+        console.print(f"[bold]Found {len(extracted)} fact(s):[/bold]\n")
+        for i, fact in enumerate(extracted, 1):
+            console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
+        if dry_run:
+            console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
+            return
+        new_count = 0
+        for fact in extracted:
+            f = fact.strip()
+            if f and f not in existing_facts:
+                store.remember(f, tags=base_tags)
+                existing_facts.add(f)
+                new_count += 1
+        console.print(
+            f"\n[green]Stored {new_count} fact(s)[/green] "
+            f"[dim](tagged: {', '.join(sorted(base_tags))})[/dim]"
+        )
         return
 
-    console.print(f"[bold]Found {len(extracted)} fact(s):[/bold]\n")
-    for i, fact in enumerate(extracted, 1):
+    # ----- Crawl mode (BFS within same domain) -----
+    console.print(
+        f"\n[bold]Crawling[/bold] [cyan]{domain}[/cyan] "
+        f"(up to {max_pages} pages) ...\n"
+    )
+
+    visited: set[str] = set()
+    queue: list[str] = [url]
+    all_facts: list[str] = []
+    pages_done = 0
+
+    while queue and pages_done < max_pages:
+        current_url = queue.pop(0)
+        # Normalise
+        current_url, _ = urldefrag(current_url)
+        if current_url in visited:
+            continue
+        visited.add(current_url)
+        pages_done += 1
+
+        console.print(f"  [{pages_done}/{max_pages}] [cyan]{current_url[:80]}[/cyan]")
+        html = _fetch_html(current_url)
+        if not html:
+            continue
+
+        # Extract facts from this page
+        facts = _distil_page(current_url, html)
+        new_on_page = [f.strip() for f in facts if f.strip() and f.strip() not in existing_facts]
+        if new_on_page:
+            console.print(f"         [dim]+{len(new_on_page)} fact(s)[/dim]")
+        all_facts.extend(new_on_page)
+        for f in new_on_page:
+            existing_facts.add(f)
+
+        # Enqueue child links (BFS)
+        for link in _extract_links(html, current_url):
+            if link not in visited and link not in queue:
+                queue.append(link)
+
+    console.print(
+        f"\n[bold]Crawl complete:[/bold] {pages_done} page(s), "
+        f"{len(all_facts)} new fact(s) found\n"
+    )
+
+    if not all_facts:
+        console.print("[yellow]No new facts found.[/yellow]")
+        return
+
+    for i, fact in enumerate(all_facts, 1):
         console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
+        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow]")
         return
 
-    from anamne.store.graph import DecisionStore
-    store = DecisionStore()
-    tags = list({domain, "web-import", *tag})
-    for fact in extracted:
-        store.remember(fact.strip(), tags=tags)
+    for fact in all_facts:
+        store.remember(fact, tags=base_tags)
 
     console.print(
-        f"\n[green]Stored {len(extracted)} fact(s)[/green] "
-        f"[dim](tagged: {', '.join(sorted(tags))})[/dim]"
+        f"\n[green]Stored {len(all_facts)} fact(s)[/green] "
+        f"[dim](tagged: {', '.join(sorted(base_tags))})[/dim]"
     )
 
 
@@ -1905,6 +2005,163 @@ def status() -> None:
     console.print()
     console.print(table)
     console.print()
+
+
+@app.command()
+def stats() -> None:
+    """Detailed memory statistics - most accessed facts, creation rate, ACT-R summary.
+
+    Complements `anamne status` with deeper analytics:
+      - Most retrieved facts (by retrieval_log count)
+      - Facts added per day over the last 14 days
+      - Oldest and newest scratchpad facts
+      - Average ACT-R activation across all facts
+
+    Examples:
+      anamne stats
+    """
+    import math
+    import sqlite3
+    from datetime import datetime, timezone
+    from collections import Counter
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    db = store._db
+
+    fact_count = store.fact_count()
+    decision_count = store.count()
+    working_count = len(store.working_active())
+
+    console.print()
+    console.print("[bold cyan]ANAMNE -- Memory Statistics[/bold cyan]")
+    console.print()
+
+    # ---- Layer summary ----
+    layer_table = Table(border_style="cyan", show_header=False, padding=(0, 2))
+    layer_table.add_column("Layer", style="cyan")
+    layer_table.add_column("Count")
+    layer_table.add_row("Scratchpad facts", f"[bold]{fact_count}[/bold]")
+    layer_table.add_row("Episodic decisions", f"[bold]{decision_count}[/bold]")
+    layer_table.add_row("Working notes (active)", f"[bold]{working_count}[/bold]")
+    console.print(layer_table)
+    console.print()
+
+    if fact_count == 0:
+        console.print("[dim]No scratchpad facts yet. Run: anamne remember ...[/dim]")
+        console.print()
+        return
+
+    with sqlite3.connect(db) as con:
+        # ---- Most retrieved facts ----
+        top_retrieved = con.execute("""
+            SELECT r.fact_id, COUNT(*) as hits, s.fact
+            FROM retrieval_log r
+            LEFT JOIN scratchpad s ON s.id = r.fact_id
+            GROUP BY r.fact_id
+            ORDER BY hits DESC
+            LIMIT 5
+        """).fetchall()
+
+        # ---- Total retrievals ----
+        total_retrievals = con.execute("SELECT COUNT(*) FROM retrieval_log").fetchone()[0]
+
+        # ---- ACT-R stats ----
+        all_fact_ids = con.execute("SELECT id FROM scratchpad").fetchall()
+
+        # ---- Creation rate - last 14 days ----
+        creation_rows = con.execute("""
+            SELECT DATE(created_at) as day, COUNT(*) as cnt
+            FROM scratchpad
+            WHERE created_at >= DATE('now', '-14 days')
+            GROUP BY day
+            ORDER BY day ASC
+        """).fetchall()
+
+        # ---- Oldest and newest ----
+        oldest = con.execute(
+            "SELECT id, fact, created_at FROM scratchpad ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        newest = con.execute(
+            "SELECT id, fact, created_at FROM scratchpad ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+
+        # ---- Tag stats ----
+        tag_rows = con.execute("SELECT tags FROM scratchpad WHERE tags IS NOT NULL AND tags != ''").fetchall()
+
+    # ---- ACT-R average ----
+    now = datetime.now(timezone.utc)
+    decay = 0.5
+    activations = []
+    for (fid,) in all_fact_ids:
+        score = store.activation_score(fid, decay)
+        if score > 0:
+            activations.append(score)
+    avg_activation = sum(activations) / len(activations) if activations else 0.0
+    facts_with_retrievals = len(activations)
+
+    # ---- Print most retrieved ----
+    if top_retrieved:
+        console.print("[bold]Most accessed facts[/bold]  (by retrieval count):")
+        top_table = Table(border_style="dim", padding=(0, 2))
+        top_table.add_column("ID", style="dim", width=14)
+        top_table.add_column("Retrievals", justify="right", width=11)
+        top_table.add_column("ACT-R", justify="right", width=8)
+        top_table.add_column("Fact", max_width=60)
+        for fid, hits, fact_text in top_retrieved:
+            act = store.activation_score(fid) if fid else 0.0
+            top_table.add_row(
+                fid or "[dim]deleted[/dim]",
+                str(hits),
+                f"{act:.3f}" if act > 0 else "[dim]--[/dim]",
+                (fact_text or "[dim]deleted[/dim]")[:80],
+            )
+        console.print(top_table)
+        console.print(f"  Total retrievals logged: [bold]{total_retrievals}[/bold]  |  "
+                      f"Facts ever accessed: [bold]{facts_with_retrievals}[/bold]  |  "
+                      f"Avg ACT-R activation: [bold]{avg_activation:.3f}[/bold]")
+        console.print()
+
+    # ---- Creation rate chart ----
+    if creation_rows:
+        console.print("[bold]Facts added - last 14 days[/bold]  (each [green]*[/green] = 1 fact):")
+        max_cnt = max(r[1] for r in creation_rows)
+        for day, cnt in creation_rows:
+            bar = "[green]" + "*" * cnt + "[/green]"
+            console.print(f"  {day}  {bar}  [dim]{cnt}[/dim]")
+        console.print()
+
+    # ---- Oldest / newest ----
+    if oldest and newest:
+        console.print("[bold]Fact age range:[/bold]")
+        oldest_date = oldest[2][:10] if oldest[2] else "?"
+        newest_date = newest[2][:10] if newest[2] else "?"
+        console.print(f"  Oldest:  [dim]{oldest[0]}[/dim]  {oldest_date}  {(oldest[1] or '')[:70]}")
+        console.print(f"  Newest:  [dim]{newest[0]}[/dim]  {newest_date}  {(newest[1] or '')[:70]}")
+        console.print()
+
+    # ---- Tag breakdown ----
+    tag_counter: Counter = Counter()
+    untagged = 0
+    all_facts_for_tags = store.list_facts(limit=10_000)
+    for f in all_facts_for_tags:
+        if f.get("tags"):
+            tag_counter.update(f["tags"])
+        else:
+            untagged += 1
+    if tag_counter:
+        console.print("[bold]Tag distribution:[/bold]  (top 15)")
+        tag_table = Table(border_style="dim", padding=(0, 2))
+        tag_table.add_column("Tag", style="cyan")
+        tag_table.add_column("Facts", justify="right")
+        tag_table.add_column("Share", justify="right")
+        for t, n in tag_counter.most_common(15):
+            pct = 100 * n / fact_count
+            tag_table.add_row(t, str(n), f"{pct:.0f}%")
+        if untagged:
+            tag_table.add_row("[dim](untagged)[/dim]", str(untagged), f"{100*untagged/fact_count:.0f}%")
+        console.print(tag_table)
+        console.print()
 
 
 @app.command()

@@ -4,6 +4,42 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.8.0] — 2026-05-11
+
+### Added - Phase 8
+
+**`anamne import-web --crawl`** - site-wide web crawl
+- `anamne import-web https://docs.example.com --crawl --max-pages 30`
+- BFS crawler follows same-domain links using stdlib `html.parser` + `urllib.parse` (zero new deps)
+- Deduplicates facts across pages: checks both store contents and facts already extracted this session
+- Per-page progress display `[1/30] url`
+- `--max-pages` cap (default: 20) prevents runaway crawls
+- `--limit` still controls max facts extracted *per page*
+
+**Fact Graph tab in web dashboard** (`anamne ui`)
+- New "Fact Graph" tab in the local web dashboard
+- Force-directed SVG visualization - bipartite layout: fact nodes (blue circles) + tag nodes (orange squares)
+- Pure vanilla JS force simulation (repulsion + spring + gravity + damping) - zero external deps, no D3
+- Edges connect each fact to its tags; tags with 2+ facts become hub nodes revealing topic clusters
+- Hover tooltip showing full fact text or tag member count
+- Drag-to-reposition any node; 400-frame animation then settles
+- New `/api/graph` endpoint returning `{nodes, edges}` JSON
+- Tags appearing on only one fact are excluded (keeps graph readable)
+
+**`anamne stats`** - deep memory analytics command
+- `anamne stats` shows detailed statistics beyond `anamne status`
+- Most-accessed facts: top 5 by retrieval count with ACT-R score
+- Total retrieval count, facts-ever-accessed, average ACT-R activation
+- Facts-added-per-day histogram for the last 14 days (ASCII bar chart)
+- Oldest and newest scratchpad facts with creation date
+- Tag distribution table: top 15 tags by fact count with percentage share
+- Direct SQLite queries on `retrieval_log` and `scratchpad` tables
+
+### Tests
+- 66 tests, all passing (Phase 8 features are UI/CLI-level, tested manually)
+
+---
+
 ## [0.7.0] — 2026-05-11
 
 ### Added - Phase 7

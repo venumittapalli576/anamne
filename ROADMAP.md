@@ -125,13 +125,26 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 8 - Future ideas
+## What's Built (v0.8.0)
+
+| Feature | Status |
+|---|---|
+| `anamne import-web --crawl` - BFS site-wide crawl, same-domain link following | ✅ |
+| `--max-pages` cap for crawl mode, per-page progress, global cross-page dedup | ✅ |
+| Fact Graph tab in web UI - force-directed SVG, bipartite fact+tag layout | ✅ |
+| `/api/graph` endpoint - returns nodes/edges JSON for vis | ✅ |
+| Drag-to-reposition nodes, hover tooltips, 400-frame force simulation | ✅ |
+| `anamne stats` - detailed analytics: most-accessed, creation rate, ACT-R avg | ✅ |
+| Per-day facts-added histogram, oldest/newest fact, tag distribution table | ✅ |
+
+---
+
+## Phase 9 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **`anamne import-web --site`** - crawl an entire docs site and distill facts
-- **Fact graph view** - force-directed graph of facts by shared tags in the web UI
 - **`anamne reminder`** - schedule a reminder that pops a working-memory note at a time
 - **Multi-user sharing** - export/import signed bundles with provenance
+- **Graph click-through** - click a fact node in the graph to open its history modal
 
 ---
 
