@@ -382,3 +382,71 @@ def test_clear_episodic(store):
     assert n == 1
     assert store.count() == 0
     assert store.indexed_commit_count("/repo") == 0
+
+
+# ------------------------------------------------------------------ #
+# Fact versioning                                                       #
+# ------------------------------------------------------------------ #
+
+def test_remember_creates_history(store):
+    mid = store.remember("Initial fact", tags=["a"])
+    hist = store.get_fact_history(mid)
+    assert len(hist) == 1
+    assert hist[0]["change_type"] == "created"
+    assert hist[0]["content"] == "Initial fact"
+    assert hist[0]["tags"] == ["a"]
+
+
+def test_update_fact_content_creates_history(store):
+    mid = store.remember("Old content")
+    store.update_fact_content(mid, "New content")
+    hist = store.get_fact_history(mid)
+    # Newest first: content_updated, then created
+    assert hist[0]["change_type"] == "content_updated"
+    assert hist[0]["content"] == "Old content"  # snapshot of OLD version
+    assert hist[1]["change_type"] == "created"
+    # Current fact should show new content
+    assert store.get_fact(mid)["fact"] == "New content"
+
+
+def test_update_fact_content_missing(store):
+    assert store.update_fact_content("notexist", "x") is False
+
+
+def test_update_fact_tags_creates_history(store):
+    mid = store.remember("A fact", tags=["x"])
+    store.update_fact_tags(mid, add=["y"])
+    hist = store.get_fact_history(mid)
+    types = [h["change_type"] for h in hist]
+    assert "tags_updated" in types
+
+
+def test_forget_fact_creates_tombstone(store):
+    mid = store.remember("To be forgotten")
+    store.forget_fact(mid)
+    hist = store.get_fact_history(mid)
+    assert hist[0]["change_type"] == "forgotten"
+    assert hist[1]["change_type"] == "created"
+
+
+def test_forget_with_merged_into_creates_merge_history(store):
+    mid = store.remember("Fact to absorb")
+    survivor = store.remember("Survivor fact")
+    store.forget_fact(mid, _merged_into=survivor)
+    hist = store.get_fact_history(mid)
+    assert hist[0]["change_type"] == "merged_into"
+    assert hist[0]["merged_into"] == survivor
+
+
+def test_history_empty_for_unknown_id(store):
+    assert store.get_fact_history("nonexistent") == []
+
+
+def test_history_newest_first(store):
+    mid = store.remember("fact")
+    store.update_fact_content(mid, "revised")
+    store.forget_fact(mid)
+    hist = store.get_fact_history(mid)
+    types = [h["change_type"] for h in hist]
+    assert types[0] == "forgotten"
+    assert types[-1] == "created"

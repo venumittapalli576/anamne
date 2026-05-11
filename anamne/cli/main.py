@@ -574,6 +574,87 @@ def tag(
 
 
 @app.command()
+def edit(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to edit"),
+    content: str = typer.Argument(..., help="New content for the fact"),
+) -> None:
+    """Update the text content of a scratchpad fact (old version is preserved in history).
+
+    Example:
+      anamne edit abc123def456 "Corrected fact text here"
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    updated = store.update_fact_content(memory_id, content)
+    if updated:
+        console.print(f"[green]Updated[/green] [cyan]{memory_id}[/cyan]")
+        console.print(f"  New content: {content}")
+    else:
+        console.print(f"[red]No fact found with id:[/red] {memory_id}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def history(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID"),
+) -> None:
+    """Show the full change history of a scratchpad fact.
+
+    Records every create, edit, tag change, and deletion (including merges).
+    Useful for auditing what happened to a fact over time.
+
+    Example:
+      anamne history abc123def456
+    """
+    from anamne.store.graph import DecisionStore
+    from rich.table import Table
+
+    store = DecisionStore()
+    events = store.get_fact_history(memory_id)
+
+    if not events:
+        console.print(
+            f"[yellow]No history found for[/yellow] [cyan]{memory_id}[/cyan] "
+            "(fact may have been created before versioning was enabled)"
+        )
+        return
+
+    table = Table(title=f"History for {memory_id}", border_style="cyan")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("When", style="yellow", no_wrap=True)
+    table.add_column("Change", style="cyan", width=16)
+    table.add_column("Content", no_wrap=False)
+    table.add_column("Tags", width=20)
+    table.add_column("Merged→", width=14)
+
+    _type_color = {
+        "created": "green",
+        "content_updated": "yellow",
+        "tags_updated": "blue",
+        "forgotten": "red",
+        "merged_into": "magenta",
+    }
+
+    for i, ev in enumerate(events, 1):
+        c = _type_color.get(ev["change_type"], "white")
+        tags_str = ", ".join(ev["tags"]) if ev["tags"] else "(none)"
+        merged_str = ev["merged_into"] or ""
+        table.add_row(
+            str(i),
+            ev["changed_at"][:19].replace("T", " "),
+            f"[{c}]{ev['change_type']}[/{c}]",
+            ev["content"][:80] + ("…" if len(ev["content"]) > 80 else ""),
+            tags_str,
+            merged_str[:12] if merged_str else "",
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@app.command()
 def consolidate(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview merges without writing anything"
@@ -1273,6 +1354,25 @@ def mcp_server() -> None:
 
     from anamne.mcp.server import run
     run()
+
+
+@app.command()
+def ui(
+    port: int = typer.Option(8765, "--port", "-p", help="Local port to listen on"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
+) -> None:
+    """Launch the local web dashboard — browse all memories in your browser.
+
+    Opens http://127.0.0.1:<port> automatically (pass --no-browser to disable).
+    Read-only view: scratchpad facts, search, working memory, indexed repos.
+    Press Ctrl+C to stop.
+
+    Example:
+      anamne ui
+      anamne ui --port 9000 --no-browser
+    """
+    from anamne.ui.server import run_ui
+    run_ui(port=port, open_browser=not no_browser)
 
 
 # Register mcp-server as an alias so both "mcp" and "mcp-server" work

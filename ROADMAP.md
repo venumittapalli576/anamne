@@ -67,13 +67,37 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 4 — Polish (next)
+## What's Built (v0.3.1)
 
-- **Web UI** — simple browser view of all memories (read-only, filterable by tag/date)
+| Feature | Status |
+|---|---|
+| `anamne --version` / `-V` flag | ✅ |
+| SECURITY.md, issue templates, PR template | ✅ |
+| PyPI + CI badges in README | ✅ |
+| Trusted Publishing (zero-token PyPI releases via OIDC) | ✅ |
+| `.gitattributes` for cross-platform line endings | ✅ |
+
+---
+
+## What's Built (v0.4.0)
+
+| Feature | Status |
+|---|---|
+| `fact_history` table — immutable audit log of every scratchpad change | ✅ |
+| `anamne edit <id>` — update fact content, preserving old version | ✅ |
+| `anamne history <id>` — show full change log per fact | ✅ |
+| MCP `update_fact` + `get_fact_history` tools (15 MCP tools total) | ✅ |
+| `anamne ui` — local web dashboard (zero extra deps, dark theme) | ✅ |
+| Consolidation records `merged_into` links in history | ✅ |
+
+---
+
+## Phase 5 — Future ideas
+
 - **Browser extension** — "Remember this?" prompt on pages you read
-- **Fact versioning** — track history of merged/updated facts for auditability
-- **`anamne forget-all`** — nuclear option: wipe a specific memory layer or all memories
-- **Tag-based filtering** in `facts` and `search` commands
+- **`anamne import-web`** — scrape and distill from a URL into scratchpad
+- **Embeddings for working memory** — semantic search on session notes
+- **Shared memory** — export/import memory bundles for teams
 
 ---
 

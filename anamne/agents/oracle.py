@@ -223,13 +223,15 @@ class OracleAgent:
             merges.append(merge_record)
 
             if not dry_run:
-                # Delete originals, write merged
-                for f in cluster:
-                    self._store.forget_fact(f["id"])
-                self._store.remember(
+                # Write merged fact first so we have its id for history tracking
+                new_id = self._store.remember(
                     merged,
                     tags=list({t for f in cluster for t in f.get("tags", [])}),
                 )
+                merge_record["new_id"] = new_id
+                # Delete originals, linking each tombstone to the survivor
+                for f in cluster:
+                    self._store.forget_fact(f["id"], _merged_into=new_id)
 
         return merges
 

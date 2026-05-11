@@ -88,6 +88,21 @@ CREATE TABLE IF NOT EXISTS indexed_commits (
     PRIMARY KEY (repo_path, commit_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_commit_repo ON indexed_commits(repo_path);
+
+-- Fact versioning: immutable audit log of every change to scratchpad facts.
+-- change_type values: 'created', 'content_updated', 'tags_updated', 'forgotten', 'merged_into'
+-- merged_into: fact_id of the surviving merged fact when change_type = 'merged_into'
+CREATE TABLE IF NOT EXISTS fact_history (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id      TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    tags         TEXT NOT NULL DEFAULT '[]',
+    changed_at   TEXT NOT NULL,
+    change_type  TEXT NOT NULL,
+    merged_into  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_history_fact ON fact_history(fact_id);
+CREATE INDEX IF NOT EXISTS idx_history_time ON fact_history(changed_at);
 """
 
 
@@ -216,17 +231,19 @@ class DecisionStore:
         import uuid
         mem_id = uuid.uuid4().hex[:12]
         now = datetime.now(timezone.utc).isoformat()
+        tags_json = json.dumps(tags or [])
         with sqlite3.connect(self._db) as con:
             con.execute(
                 "INSERT INTO scratchpad (id, fact, tags, created_at, last_used_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (mem_id, fact, json.dumps(tags or []), now, now),
+                (mem_id, fact, tags_json, now, now),
             )
+            self._record_history(con, mem_id, fact, tags_json, "created")
         # Also embed into ChromaDB for semantic search
         self._scratch_col.upsert(
             ids=[mem_id],
             documents=[fact],
-            metadatas=[{"tags": json.dumps(tags or [])}],
+            metadatas=[{"tags": tags_json}],
         )
         return mem_id
 
@@ -313,11 +330,44 @@ class DecisionStore:
             new_tags = sorted(tag_set)
 
         with sqlite3.connect(self._db) as con:
+            new_tags_json = json.dumps(new_tags)
             con.execute(
                 "UPDATE scratchpad SET tags = ? WHERE id = ?",
-                (json.dumps(new_tags), mem_id),
+                (new_tags_json, mem_id),
             )
+            # Record current content for the history snapshot
+            row = con.execute(
+                "SELECT fact FROM scratchpad WHERE id = ?", (mem_id,)
+            ).fetchone()
+            if row:
+                self._record_history(con, mem_id, row[0], new_tags_json, "tags_updated")
         return new_tags
+
+    def update_fact_content(self, mem_id: str, new_content: str) -> bool:
+        """Update the text content of a scratchpad fact, recording the old version.
+
+        Returns True if the fact existed and was updated, False if not found.
+        """
+        current = self.get_fact(mem_id)
+        if current is None:
+            return False
+        with sqlite3.connect(self._db) as con:
+            # Archive old version first
+            self._record_history(
+                con, mem_id, current["fact"], json.dumps(current["tags"]),
+                "content_updated",
+            )
+            con.execute(
+                "UPDATE scratchpad SET fact = ? WHERE id = ?",
+                (new_content, mem_id),
+            )
+        # Re-embed in ChromaDB
+        self._scratch_col.upsert(
+            ids=[mem_id],
+            documents=[new_content],
+            metadatas=[{"tags": json.dumps(current["tags"])}],
+        )
+        return True
 
     def clear_scratchpad(self) -> int:
         """Delete all scratchpad facts. Returns count deleted."""
@@ -355,16 +405,49 @@ class DecisionStore:
             pass
         return deleted
 
-    def forget_fact(self, mem_id: str) -> bool:
+    def forget_fact(self, mem_id: str, _merged_into: Optional[str] = None) -> bool:
+        """Delete a scratchpad fact and record a tombstone in fact_history.
+
+        _merged_into: internal — set by consolidation to link the deletion to the
+        surviving merged fact.  Not part of the public API.
+        """
         with sqlite3.connect(self._db) as con:
-            cur = con.execute("DELETE FROM scratchpad WHERE id = ?", (mem_id,))
-            deleted = cur.rowcount > 0
-        if deleted:
-            try:
-                self._scratch_col.delete(ids=[mem_id])
-            except Exception:
-                pass  # ChromaDB may not have it yet (pre-migration facts)
-        return deleted
+            row = con.execute(
+                "SELECT fact, tags FROM scratchpad WHERE id = ?", (mem_id,)
+            ).fetchone()
+            if not row:
+                return False
+            change_type = "merged_into" if _merged_into else "forgotten"
+            self._record_history(
+                con, mem_id, row[0], row[1], change_type, merged_into=_merged_into
+            )
+            con.execute("DELETE FROM scratchpad WHERE id = ?", (mem_id,))
+        try:
+            self._scratch_col.delete(ids=[mem_id])
+        except Exception:
+            pass  # ChromaDB may not have it yet (pre-migration facts)
+        return True
+
+    def get_fact_history(self, fact_id: str) -> list[dict]:
+        """Return the full change history for a scratchpad fact, newest first."""
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT id, fact_id, content, tags, changed_at, change_type, merged_into "
+                "FROM fact_history WHERE fact_id = ? ORDER BY changed_at DESC",
+                (fact_id,),
+            ).fetchall()
+        return [
+            {
+                "seq": r[0],
+                "fact_id": r[1],
+                "content": r[2],
+                "tags": json.loads(r[3]),
+                "changed_at": r[4],
+                "change_type": r[5],
+                "merged_into": r[6],
+            }
+            for r in rows
+        ]
 
     def touch_facts(self, mem_ids: list[str]) -> None:
         """Mark facts as used — updates scratchpad stats AND logs to retrieval_log.
@@ -559,6 +642,24 @@ class DecisionStore:
     # ------------------------------------------------------------------ #
     # Internal                                                              #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _record_history(
+        con: sqlite3.Connection,
+        fact_id: str,
+        content: str,
+        tags_json: str,
+        change_type: str,
+        merged_into: Optional[str] = None,
+    ) -> None:
+        """Insert one row into fact_history.  Must be called inside an open connection."""
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "INSERT INTO fact_history "
+            "(fact_id, content, tags, changed_at, change_type, merged_into) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (fact_id, content, tags_json, now, change_type, merged_into),
+        )
 
     def _migrate_scratchpad_to_chroma(self) -> None:
         """One-time migration: embed existing SQLite facts into ChromaDB scratchpad.

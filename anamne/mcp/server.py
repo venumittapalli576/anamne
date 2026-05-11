@@ -1,10 +1,10 @@
 ﻿"""
 ANAMNE MCP Server — plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 13 memory tools covering all three LIGHT layers:
+Exposes 15 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
   Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
-              search_facts, consolidate_facts
+              update_fact, get_fact_history, search_facts, consolidate_facts
   Working   : working_memory_add, working_memory_active
 """
 
@@ -199,6 +199,31 @@ def tag_fact(
     if result is None:
         return {"error": f"No fact found with id: {memory_id}"}
     return {"id": memory_id, "tags": result}
+
+
+@mcp.tool()
+def update_fact(memory_id: str, content: str) -> dict:
+    """Update the text content of a scratchpad fact.
+
+    The old version is preserved in fact_history for auditability.
+    Returns {id, updated: true} on success or {error} if not found.
+    """
+    ok = _store.update_fact_content(memory_id, content)
+    if not ok:
+        return {"error": f"No fact found with id: {memory_id}"}
+    return {"id": memory_id, "updated": True, "new_content": content}
+
+
+@mcp.tool()
+def get_fact_history(memory_id: str) -> list[dict]:
+    """Return the full change history for a scratchpad fact, newest first.
+
+    Each entry has: seq, fact_id, content, tags, changed_at, change_type,
+    and merged_into (non-null when the fact was absorbed by consolidation).
+
+    change_type values: created | content_updated | tags_updated | forgotten | merged_into
+    """
+    return _store.get_fact_history(memory_id)
 
 
 @mcp.tool()

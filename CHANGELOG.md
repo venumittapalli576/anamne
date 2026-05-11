@@ -4,6 +4,41 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.4.0] — 2026-05-11
+
+### Added — Phase 4 Polish
+
+**Fact versioning** (full auditability of scratchpad changes)
+- New `fact_history` SQL table — immutable log of every create, edit, tag change, deletion, and merge
+- `store.get_fact_history(fact_id)` — return full history for a fact, newest first
+- `store.update_fact_content(mem_id, new_content)` — edit fact text; old version archived in history
+- `store.remember()` now records `created` event on write
+- `store.update_fact_tags()` now records `tags_updated` event
+- `store.forget_fact()` now records `forgotten` tombstone (or `merged_into` when called by consolidation)
+- Consolidation wires `merged_into → surviving_id` so you can trace what was merged where
+- New MCP tool: `update_fact(memory_id, content)` — edit fact content via MCP
+- New MCP tool: `get_fact_history(memory_id)` — retrieve audit trail via MCP
+
+**Local web dashboard** (`anamne ui`)
+- New CLI command: `anamne ui [--port PORT] [--no-browser]`
+- Zero-dependency local HTTP server (Python stdlib only — no Flask, no FastAPI)
+- Self-contained single-page app with dark theme matching GitHub's palette
+- **Scratchpad** tab: browse all facts, filter by text/tag, see ACT-R scores, click for history modal
+- **Search** tab: live hybrid search (substring + semantic + ACT-R ranked)
+- **Working Memory** tab: active session notes with expiry times
+- **Repos** tab: list all indexed repositories
+- History modal: full change log per fact with color-coded change types
+
+**New CLI commands**
+- `anamne edit <id> "<new text>"` — update fact content (history preserved)
+- `anamne history <id>` — show full change history as a rich table
+
+### Tests
+- 60 tests total (was 52), all passing
+- New: 8 fact-versioning tests covering create / edit / tag / forget / merge / history order
+
+---
+
 ## [0.3.1] — 2026-05-11
 
 ### Added
