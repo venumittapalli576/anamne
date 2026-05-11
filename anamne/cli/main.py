@@ -3637,6 +3637,147 @@ def mcp_server() -> None:
     run()
 
 
+@app.command()
+def diff(
+    id1: str = typer.Argument(..., help="First fact id"),
+    id2: str = typer.Argument(..., help="Second fact id"),
+) -> None:
+    """Compare two scratchpad facts side-by-side (text, tags, activation).
+
+    Useful when `anamne related` surfaces a near-duplicate and you want to
+    decide whether to merge, edit, or leave both.
+
+    Examples:
+      anamne diff abc123 def456
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    a = store.get_fact(id1)
+    b = store.get_fact(id2)
+    if a is None or b is None:
+        missing = id1 if a is None else id2
+        console.print(f"[red]No fact found with id '{missing}'.[/red]")
+        raise typer.Exit(code=1)
+
+    act_a = store.activation_score(a["id"])
+    act_b = store.activation_score(b["id"])
+    tags_a = ", ".join(a.get("tags") or []) or "-"
+    tags_b = ", ".join(b.get("tags") or []) or "-"
+
+    table = Table(border_style="cyan", padding=(0, 2))
+    table.add_column("", style="dim", no_wrap=True, width=14)
+    table.add_column(a["id"], style="cyan")
+    table.add_column(b["id"], style="cyan")
+    table.add_row("Fact", a["fact"], b["fact"])
+    table.add_row("Tags", tags_a, tags_b)
+    table.add_row("Created", a["created_at"][:19], b["created_at"][:19])
+    table.add_row("Last used", a["last_used_at"][:19], b["last_used_at"][:19])
+    table.add_row("Use count", str(a["use_count"]), str(b["use_count"]))
+    table.add_row("ACT-R", f"{act_a:.4f}", f"{act_b:.4f}")
+    table.add_row(
+        "Pinned",
+        "yes" if a.get("pinned") else "no",
+        "yes" if b.get("pinned") else "no",
+    )
+    # Simple identical-text marker
+    table.add_row(
+        "Identical text",
+        "[green]yes[/green]" if a["fact"] == b["fact"] else "[dim]no[/dim]",
+        "",
+    )
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@app.command(name="fact-of-the-day")
+def fact_of_the_day() -> None:
+    """Surface one fact at random from pinned + top-activation facts.
+
+    Designed to be called on shell login or before a coding session - quick
+    reminder of something durable. Touches the fact for ACT-R activation.
+
+    Examples:
+      anamne fact-of-the-day
+    """
+    import random
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    all_facts = store.list_facts(limit=10_000)
+    if not all_facts:
+        console.print("\n  [dim]No facts yet.[/dim]\n")
+        return
+    pinned = [f for f in all_facts if f.get("pinned")]
+    # Top 20 by activation among unpinned
+    scored = sorted(
+        ((store.activation_score(f["id"]), f) for f in all_facts if not f.get("pinned")),
+        key=lambda x: x[0], reverse=True,
+    )
+    top = [f for _, f in scored[:20]]
+    pool = pinned + top
+    if not pool:
+        pool = all_facts
+    chosen = random.choice(pool)
+    tag_str = (", ".join(chosen["tags"]) or "-")
+    console.print()
+    console.print("  [bold]Fact of the day[/bold]")
+    console.print(
+        f"  [cyan]{chosen['id']}[/cyan]  {chosen['fact']}\n"
+        f"  [dim]tags:[/dim] {tag_str}"
+        f"{'  [yellow][pinned][/yellow]' if chosen.get('pinned') else ''}"
+    )
+    console.print()
+    try:
+        store.touch_facts([chosen["id"]])
+    except Exception:
+        pass
+
+
+@app.command()
+def backup(
+    output_dir: Optional[Path] = typer.Option(
+        None, "--dir", "-d", help="Backup directory (default ~/.anamne/backups)"
+    ),
+) -> None:
+    """One-shot timestamped JSON backup of every memory layer.
+
+    Writes `<dir>/anamne-backup-YYYYMMDD-HHMMSS.json` and prints the path.
+    The backup is the same shape as `anamne export --output ...` so it can be
+    restored with `anamne import-memory`.
+
+    Examples:
+      anamne backup
+      anamne backup --dir ./my-backups
+    """
+    from datetime import datetime
+    from anamne.store.graph import DecisionStore
+    from anamne import __version__
+
+    store = DecisionStore()
+    target_dir = output_dir or (Path.home() / ".anamne" / "backups")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = target_dir / f"anamne-backup-{stamp}.json"
+
+    payload = {
+        "exported_at": stamp,
+        "version": __version__,
+        "scratchpad_facts": store.list_facts(limit=100_000),
+        "working_memory": store.working_active(),
+        "episodic_decisions": [
+            d.to_dict() for d in store.list_all_decisions(limit=100_000)
+        ],
+    }
+    target.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    size_kb = target.stat().st_size / 1024
+    console.print(
+        f"\n  [green]Backup written[/green]  [bold]{target}[/bold]  "
+        f"[dim]({size_kb:.1f} KB)[/dim]\n"
+    )
+
+
 @app.command(name="search-all")
 def search_all(
     query: str = typer.Argument(..., help="Search term"),

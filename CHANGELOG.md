@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.24.0] — 2026-05-11
+
+### Added - Phase 24
+
+**`anamne diff <id1> <id2>`** - side-by-side fact comparison
+- Compares text, tags, created, last_used, use_count, ACT-R, pinned status
+- Marks if the fact text is exactly identical
+- Great companion to `anamne related` for merge/keep decisions
+
+**`anamne fact-of-the-day`** - daily reminder of one durable fact
+- Picks one fact at random from pinned + top-20-activation pool
+- Touches the chosen fact for ACT-R tracking
+- Designed for shell login hooks or daily standup rituals
+
+**`anamne backup`** - timestamped one-shot JSON backup
+- Writes `~/.anamne/backups/anamne-backup-YYYYMMDD-HHMMSS.json` by default
+- Same shape as `anamne export` JSON, so it round-trips through `import-memory`
+- `--dir` overrides the destination directory
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.23.0] — 2026-05-11
 
 ### Added - Phase 23

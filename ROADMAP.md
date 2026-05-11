@@ -310,13 +310,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 24 - Future ideas
+## What's Built (v0.24.0)
+
+| Feature | Status |
+|---|---|
+| `anamne diff <id1> <id2>` - side-by-side fact comparison | ✅ |
+| `anamne fact-of-the-day` - daily durable-fact reminder | ✅ |
+| `anamne backup` - timestamped JSON backup to ~/.anamne/backups | ✅ |
+
+---
+
+## Phase 25 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne diff <id1> <id2>`** - compare fact contents side-by-side
+- **`anamne backup --schedule`** - cron-style auto-backup
+- **`anamne fact-of-the-day --post-to <url>`** - webhook integration
 
 ---
 

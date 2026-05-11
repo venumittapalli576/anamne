@@ -236,6 +236,9 @@ anamne related <memory-id>
 anamne related <memory-id> --limit 5
 anamne related <memory-id> --tag python   # tag-filtered neighbors
 
+# Compare two facts side-by-side (text, tags, ACT-R, pinned status)
+anamne diff <id1> <id2>
+
 # Rename a tag across every fact (e.g. fix typos)
 anamne tag-rename pyhton python
 
@@ -331,6 +334,13 @@ anamne export --format markdown --output memories.md
 anamne import-memory backup.json
 anamne import-memory team-shared-facts.json --dry-run   # preview first
 anamne import-memory old-machine.json --no-working      # skip working memory
+
+# One-shot timestamped backup to ~/.anamne/backups/
+anamne backup
+anamne backup --dir ./my-backups
+
+# Surface one fact at random (pinned or high-activation) - daily reminder
+anamne fact-of-the-day
 ```
 
 ### Diagnostics
