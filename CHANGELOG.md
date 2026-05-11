@@ -4,6 +4,36 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.17.0] — 2026-05-11
+
+### Added - Phase 17
+
+**`anamne similar <text>`** - pure-semantic search
+- Free-text semantic-only neighbor search (no substring, no ACT-R rerank)
+- Complements `anamne search` (hybrid + ranked) when terminology differs
+
+**`anamne promote <working_id>`** - working -> scratchpad promotion
+- Promotes a working-memory note into a permanent scratchpad fact
+- Removes the original working note (it's now permanent)
+- `--tag` adds tags during promotion
+- Workflow: jot transient notes in working, promote what matters
+
+**`anamne profile`** - LLM-generated "about me" summary
+- Pulls pinned + most-activated facts (up to 30) and asks the LLM to write
+  a 3-5 paragraph profile of you, your preferences, your projects
+- Falls back to raw fact dump if no API key is configured
+- Useful for handing context to a new AI assistant
+
+**New store methods**
+- `working_get(work_id)` - fetch a single working note (active or expired)
+- `working_delete(work_id)` - delete one working note (SQLite + ChromaDB)
+- `promote_working(work_id, tags)` - move note from working to scratchpad
+
+### Tests
+- 86 tests, all passing (+6 for working_get/delete/promote)
+
+---
+
 ## [0.16.0] — 2026-05-11
 
 ### Added - Phase 16

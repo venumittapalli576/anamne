@@ -150,6 +150,10 @@ anamne search postgres
 anamne search "python preference" --limit 5 --tag backend
 anamne search deploy --pinned       # only pinned facts
 
+# Pure-semantic search (embeddings only, no substring match)
+anamne similar "why we picked our database"
+anamne similar "deployment philosophy" --limit 5
+
 # List all scratchpad facts (optionally filter by tag or pin status)
 anamne facts
 anamne facts --tag python --limit 10
@@ -170,6 +174,13 @@ anamne working "debugging login flow" --ttl 120  # 2 hours
 
 # Search working memory notes
 anamne search-working "debug"
+
+# Promote a working note into a permanent scratchpad fact
+anamne promote <working-id>
+anamne promote <working-id> --tag architecture --tag postgres
+
+# LLM-generated 'about me' summary from pinned + top facts
+anamne profile
 ```
 
 ### Fact management

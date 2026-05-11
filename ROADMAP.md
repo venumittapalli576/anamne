@@ -233,13 +233,26 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 17 - Future ideas
+## What's Built (v0.17.0)
+
+| Feature | Status |
+|---|---|
+| `anamne similar <text>` - pure-semantic free-text search | ✅ |
+| `anamne promote <working_id>` - move working note to scratchpad | ✅ |
+| `anamne profile` - LLM "about me" summary from pinned + top facts | ✅ |
+| Store: `working_get`, `working_delete`, `promote_working` methods | ✅ |
+| 86 tests, all passing | ✅ |
+
+---
+
+## Phase 18 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
 - **`anamne related --tag X`** - filter similarity neighbors by tag
+- **`anamne profile --refresh-pins`** - LLM suggests facts to pin
 
 ---
 

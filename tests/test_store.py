@@ -642,3 +642,48 @@ def test_related_facts_returns_pinned_field(store):
     if results:
         # Each result should expose a `pinned` boolean
         assert all("pinned" in r for r in results)
+
+
+# ------------------------------------------------------------------ #
+# Working memory get / delete / promote                                 #
+# ------------------------------------------------------------------ #
+
+def test_working_get_returns_note(store):
+    wid = store.working_add("debugging auth middleware", ttl_minutes=120)
+    note = store.working_get(wid)
+    assert note is not None
+    assert note["id"] == wid
+    assert note["note"] == "debugging auth middleware"
+
+
+def test_working_get_missing_returns_none(store):
+    assert store.working_get("no-such-id") is None
+
+
+def test_working_delete_removes_note(store):
+    wid = store.working_add("temporary thought")
+    assert store.working_get(wid) is not None
+    ok = store.working_delete(wid)
+    assert ok is True
+    assert store.working_get(wid) is None
+
+
+def test_working_delete_missing_returns_false(store):
+    assert store.working_delete("no-such-id") is False
+
+
+def test_promote_working_creates_scratchpad_and_removes_working(store):
+    wid = store.working_add("we decided to use Postgres for concurrency")
+    new_id = store.promote_working(wid, tags=["architecture"])
+    assert new_id is not None
+    # Working note is gone
+    assert store.working_get(wid) is None
+    # New scratchpad fact exists
+    new_fact = store.get_fact(new_id)
+    assert new_fact is not None
+    assert new_fact["fact"] == "we decided to use Postgres for concurrency"
+    assert "architecture" in new_fact["tags"]
+
+
+def test_promote_working_missing_returns_none(store):
+    assert store.promote_working("no-such-id") is None

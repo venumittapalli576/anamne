@@ -806,6 +806,48 @@ class DecisionStore:
             pass
         return count
 
+    def working_get(self, work_id: str) -> Optional[dict]:
+        """Fetch a single working-memory note by id (active or expired)."""
+        with sqlite3.connect(self._db) as con:
+            row = con.execute(
+                "SELECT id, note, created_at, expires_at "
+                "FROM working_memory WHERE id = ?",
+                (work_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0], "note": row[1],
+            "created_at": row[2], "expires_at": row[3],
+        }
+
+    def working_delete(self, work_id: str) -> bool:
+        """Delete one working note by id. Returns True if anything was removed."""
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "DELETE FROM working_memory WHERE id = ?", (work_id,)
+            ).rowcount
+        try:
+            self._working_col.delete(ids=[work_id])
+        except Exception:
+            pass
+        return rows > 0
+
+    def promote_working(
+        self, work_id: str, tags: Optional[list[str]] = None
+    ) -> Optional[str]:
+        """Move a working note into permanent scratchpad memory.
+
+        Returns the new scratchpad id, or None if the working note didn't exist.
+        The original working note is removed (the note is now permanent).
+        """
+        note = self.working_get(work_id)
+        if note is None:
+            return None
+        new_id = self.remember(note["note"], tags=tags or [])
+        self.working_delete(work_id)
+        return new_id
+
     # ------------------------------------------------------------------ #
     # Incremental indexing helpers                                          #
     # ------------------------------------------------------------------ #

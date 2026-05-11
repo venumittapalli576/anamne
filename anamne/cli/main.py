@@ -2605,6 +2605,133 @@ def tags(
 
 
 @app.command()
+def similar(
+    text: str = typer.Argument(..., help="Free-text query"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
+) -> None:
+    """Pure-semantic search over scratchpad facts (no substring, no ACT-R rerank).
+
+    Differs from `anamne search`:
+      - `search` is hybrid (substring + semantic + ACT-R activation rerank)
+      - `similar` is pure ChromaDB nearest-neighbor on embeddings
+
+    Useful when you don't know the exact terminology and want conceptual matches.
+
+    Examples:
+      anamne similar "why we picked our database"
+      anamne similar "deployment philosophy" --limit 5
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    results = store.search_facts_semantic(text, limit=limit)
+    if not results:
+        console.print(f"\n  [dim]No semantically similar facts found for "
+                      f"'[cyan]{text}[/cyan]'.[/dim]\n")
+        return
+    console.print(f"\n  [bold]{len(results)} similar fact(s) for "
+                  f"'[cyan]{text}[/cyan]':[/bold]\n")
+    for f in results:
+        tag_str = f"  [dim]({', '.join(f['tags'])})[/dim]" if f.get("tags") else ""
+        console.print(f"  [cyan]{f['id']}[/cyan]  {f['fact']}{tag_str}")
+    console.print()
+
+
+@app.command()
+def promote(
+    working_id: str = typer.Argument(..., help="Working memory note id to promote"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Tag for the new fact"),
+) -> None:
+    """Promote a working-memory note into a permanent scratchpad fact.
+
+    The note is removed from working memory and stored as a regular fact.
+    Useful workflow: jot transient context with `anamne working "..."`,
+    then promote what turns out to matter.
+
+    Examples:
+      anamne promote abc123
+      anamne promote abc123 --tag architecture --tag postgres
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    new_id = store.promote_working(working_id, tags=tag or None)
+    if new_id is None:
+        console.print(f"[red]No working memory note with id '{working_id}'.[/red]")
+        raise typer.Exit(code=1)
+    console.print(
+        f"\n  [green]Promoted[/green] working note "
+        f"[dim]{working_id}[/dim] -> scratchpad fact "
+        f"[cyan]{new_id}[/cyan]\n"
+    )
+
+
+@app.command()
+def profile() -> None:
+    """LLM-generated 'about me' summary from your scratchpad facts.
+
+    Pulls every pinned and frequently-accessed fact and asks the LLM to write
+    a concise multi-paragraph profile. Helpful for sharing context with a new
+    AI assistant or refreshing your own view of long-term preferences.
+
+    Skips the LLM step if no API key is configured (raw fact dump instead).
+
+    Examples:
+      anamne profile
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    all_facts = store.list_facts(limit=10_000)
+    if not all_facts:
+        console.print("\n  [dim]No facts to profile yet.[/dim]\n")
+        return
+
+    # Prefer pinned facts; supplement with top-activation
+    pinned = [f for f in all_facts if f.get("pinned")]
+    scored = sorted(
+        ((store.activation_score(f["id"]), f) for f in all_facts if not f.get("pinned")),
+        key=lambda x: x[0], reverse=True,
+    )
+    top_activation = [f for _, f in scored[:20]]
+    profile_facts = pinned + top_activation
+    # Dedupe by id while preserving order
+    seen: set[str] = set()
+    profile_facts = [
+        f for f in profile_facts if not (f["id"] in seen or seen.add(f["id"]))
+    ][:30]
+
+    fact_lines = "\n".join(
+        f"- {f['fact']} (tags: {', '.join(f['tags']) or 'none'})"
+        for f in profile_facts
+    )
+
+    try:
+        from anamne.llm import LLMClient
+        client = LLMClient()
+        prompt = (
+            "Below are the most-important persistent facts the user has saved "
+            "about themselves, their preferences, and their projects.\n\n"
+            "Write a concise multi-paragraph 'profile' summarising who this user "
+            "is, what they care about, and how they work. Use only the facts "
+            "below; do not invent details. 3-5 short paragraphs.\n\n"
+            f"FACTS:\n{fact_lines}\n\nPROFILE:"
+        )
+        result = client.complete(prompt, max_tokens=900)
+        console.print("\n  [bold]Profile[/bold]  "
+                      f"[dim](from {len(profile_facts)} facts)[/dim]\n")
+        console.print(result.strip())
+        console.print()
+    except Exception as e:
+        console.print(
+            f"\n  [yellow]LLM unavailable ({e}). Showing raw facts.[/yellow]\n"
+        )
+        for f in profile_facts:
+            console.print(f"  [dim]{f['id']}[/dim]  {f['fact']}")
+        console.print()
+
+
+@app.command()
 def related(
     memory_id: str = typer.Argument(..., help="Memory ID to find related facts for"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max number of related facts"),
