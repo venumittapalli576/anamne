@@ -4,6 +4,32 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.16.0] — 2026-05-11
+
+### Added - Phase 16
+
+**`anamne timeline`** - chronological view of memory activity
+- For each day: facts created, retrievals, history events
+- `--days N` controls the lookback window (default 14)
+- `--tag X` filters created facts by tag
+- Shows up to 3 fact snippets per day with "...and N more" indicator
+
+**`anamne tags`** - lightweight tag listing
+- Lists every distinct tag with its fact count
+- `--sort count` (default) or `--sort name`
+- `--limit N` caps the output (default 50)
+- Faster alternative to `anamne tag-stats` when you just want the names
+
+**`anamne export --since YYYY-MM-DD`** - incremental export
+- Only items created on/after the given ISO date
+- Composes with `--tag`, `--no-episodic`, `--no-working`, `--format`
+- Adds a top-level `"since"` field to the JSON payload for traceability
+
+### Tests
+- 80 tests, all passing
+
+---
+
 ## [0.15.0] — 2026-05-11
 
 ### Added - Phase 15

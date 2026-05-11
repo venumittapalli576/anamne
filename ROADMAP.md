@@ -222,7 +222,18 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 16 - Future ideas
+## What's Built (v0.16.0)
+
+| Feature | Status |
+|---|---|
+| `anamne timeline` - chronological memory activity (created/retrieved/events) | ✅ |
+| `anamne timeline --days N --tag X` filters | ✅ |
+| `anamne tags` - quick tag listing with counts (`--sort`, `--limit`) | ✅ |
+| `anamne export --since YYYY-MM-DD` - incremental delta export | ✅ |
+
+---
+
+## Phase 17 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance

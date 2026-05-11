@@ -251,6 +251,7 @@ anamne recap --no-llm              # raw dump without LLM
 anamne export --output backup.json
 anamne export --format markdown --output memories.md
 anamne export --tag python --output python-facts.json  # tag-scoped
+anamne export --since 2026-05-01 --output delta.json   # incremental backup
 
 # Bulk-delete all facts with a specific tag
 anamne forget-tag web-import             # preview list then confirm
@@ -272,6 +273,14 @@ anamne stats
 # Tag distribution + co-occurrence analysis
 anamne tag-stats
 anamne tag-stats --top 30 --history   # include monthly growth per tag
+
+# Just list all distinct tags with counts
+anamne tags
+anamne tags --sort name --limit 200
+
+# Chronological view of memory activity over time
+anamne timeline
+anamne timeline --days 7 --tag python
 ```
 
 ### Backup, restore, and sharing

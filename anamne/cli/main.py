@@ -46,6 +46,7 @@ Server:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -1860,6 +1861,10 @@ def export(
         [], "--tag", "-t",
         help="Export only scratchpad facts with this tag (repeatable); skips episodic + working"
     ),
+    since: Optional[str] = typer.Option(
+        None, "--since", metavar="YYYY-MM-DD",
+        help="Only export items created on/after this date (incremental backup)"
+    ),
 ) -> None:
     """Export all memories to JSON or Markdown for backup or migration.
 
@@ -1868,6 +1873,7 @@ def export(
       anamne export --format markdown --output memories.md
       anamne export --no-episodic --output facts-only.json
       anamne export --tag python --output python-facts.json
+      anamne export --since 2026-05-01 --output delta.json
     """
     import json as _json
     from datetime import date
@@ -1880,14 +1886,21 @@ def export(
         no_episodic = True
         no_working = True
 
+    def _after_since(items: list[dict], key: str) -> list[dict]:
+        if not since:
+            return items
+        return [it for it in items if (it.get(key) or "") >= since]
+
     if fmt == "markdown":
         lines: list[str] = [
             f"# ANAMNE Memory Export",
-            f"*Exported {date.today().isoformat()}*\n",
+            f"*Exported {date.today().isoformat()}*"
+            + (f" *(since {since})*" if since else "") + "\n",
         ]
 
         if not no_facts:
             facts = store.list_facts(limit=10_000, tags=tag or None)
+            facts = _after_since(facts, "created_at")
             tag_header = f" (tag: {', '.join(tag)})" if tag else ""
             lines.append(f"## Scratchpad Facts ({len(facts)}{tag_header})\n")
             for f in facts:
@@ -1898,6 +1911,7 @@ def export(
 
         if not no_working:
             working_items = store.working_active()
+            working_items = _after_since(working_items, "created_at")
             lines.append(f"## Working Memory ({len(working_items)} active)\n")
             for w in working_items:
                 lines.append(f"- {w['note']} *(expires {w['expires_at']})*")
@@ -1905,6 +1919,11 @@ def export(
 
         if not no_episodic:
             decisions = store.list_all_decisions(limit=10_000)
+            if since:
+                decisions = [
+                    d for d in decisions
+                    if d.created_at.isoformat() >= since
+                ]
             lines.append(f"## Episodic Memory ({len(decisions)} decisions)\n")
             for d in decisions:
                 lines.append(
@@ -1920,17 +1939,24 @@ def export(
     else:  # json
         from anamne import __version__
         payload: dict = {"exported_at": date.today().isoformat(), "version": __version__}
+        if since:
+            payload["since"] = since
 
         if not no_facts:
-            payload["scratchpad_facts"] = store.list_facts(limit=10_000, tags=tag or None)
+            facts = store.list_facts(limit=10_000, tags=tag or None)
+            payload["scratchpad_facts"] = _after_since(facts, "created_at")
 
         if not no_working:
-            payload["working_memory"] = store.working_active()
+            payload["working_memory"] = _after_since(store.working_active(), "created_at")
 
         if not no_episodic:
-            payload["episodic_decisions"] = [
-                d.to_dict() for d in store.list_all_decisions(limit=10_000)
-            ]
+            decisions = store.list_all_decisions(limit=10_000)
+            if since:
+                decisions = [
+                    d for d in decisions
+                    if d.created_at.isoformat() >= since
+                ]
+            payload["episodic_decisions"] = [d.to_dict() for d in decisions]
 
         content = _json.dumps(payload, indent=2, default=str)
 
@@ -2444,6 +2470,138 @@ def forget_tag(
             pass
 
     console.print(f"\n  [green]Deleted {deleted} fact(s) with tag '[cyan]{tag}[/cyan]'.[/green]\n")
+
+
+@app.command()
+def timeline(
+    days: int = typer.Option(14, "--days", "-d", help="Days of history to show"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Filter facts by tag"),
+) -> None:
+    """Chronological view of memory activity, grouped by date.
+
+    Shows for each day: facts created, facts retrieved (from retrieval_log),
+    and any history events (edits, tag changes, deletions). Great for
+    answering 'what happened on Tuesday?' or 'what have I been working on?'.
+
+    Examples:
+      anamne timeline
+      anamne timeline --days 7
+      anamne timeline --tag python --days 30
+    """
+    import sqlite3
+    from collections import defaultdict
+    from datetime import datetime, timezone, timedelta
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    db = store.data_dir / "anamne.db"
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    by_day: dict[str, dict] = defaultdict(lambda: {"created": [], "retrieved": 0, "events": 0})
+
+    with sqlite3.connect(db) as con:
+        # Created facts
+        rows = con.execute(
+            "SELECT id, fact, tags, created_at FROM scratchpad "
+            "WHERE created_at >= ? ORDER BY created_at ASC",
+            (cutoff,),
+        ).fetchall()
+        tag_set = set(tag)
+        for fid, fact, tags_json, created_at in rows:
+            tags = json.loads(tags_json) if tags_json else []
+            if tag_set and not tag_set.intersection(tags):
+                continue
+            day = created_at[:10]
+            by_day[day]["created"].append((fid, fact[:60]))
+
+        # Retrievals (no tag filter applied — already approximate)
+        try:
+            retr_rows = con.execute(
+                "SELECT DATE(retrieved_at), COUNT(*) FROM retrieval_log "
+                "WHERE retrieved_at >= ? GROUP BY DATE(retrieved_at)",
+                (cutoff,),
+            ).fetchall()
+            for day, cnt in retr_rows:
+                by_day[day]["retrieved"] = cnt
+        except Exception:
+            pass
+
+        # History events
+        try:
+            evt_rows = con.execute(
+                "SELECT DATE(changed_at), COUNT(*) FROM fact_history "
+                "WHERE changed_at >= ? GROUP BY DATE(changed_at)",
+                (cutoff,),
+            ).fetchall()
+            for day, cnt in evt_rows:
+                by_day[day]["events"] = cnt
+        except Exception:
+            pass
+
+    if not by_day:
+        console.print(f"\n  [dim]No memory activity in the last {days} day(s).[/dim]\n")
+        return
+
+    console.print(f"\n  [bold]Memory timeline - last {days} day(s)[/bold]\n")
+    for day in sorted(by_day.keys()):
+        info = by_day[day]
+        n_created = len(info["created"])
+        parts: list[str] = []
+        if n_created:
+            parts.append(f"[green]{n_created} created[/green]")
+        if info["retrieved"]:
+            parts.append(f"[cyan]{info['retrieved']} retrieved[/cyan]")
+        if info["events"]:
+            parts.append(f"[yellow]{info['events']} events[/yellow]")
+        summary = ", ".join(parts) if parts else "[dim]quiet[/dim]"
+        console.print(f"  [bold]{day}[/bold]  {summary}")
+        for fid, snippet in info["created"][:3]:
+            console.print(f"    [dim]+ {fid}[/dim]  {snippet}")
+        if n_created > 3:
+            console.print(f"    [dim]  ...and {n_created - 3} more[/dim]")
+    console.print()
+
+
+@app.command()
+def tags(
+    sort: str = typer.Option("count", "--sort", "-s", help="Sort: count | name"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max tags to display"),
+) -> None:
+    """List every distinct tag with its fact count.
+
+    A lighter alternative to `anamne tag-stats` when you just need to scan
+    what tags exist.
+
+    Examples:
+      anamne tags
+      anamne tags --sort name
+      anamne tags --limit 200
+    """
+    from collections import Counter
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    all_facts = store.list_facts(limit=10_000)
+    counter: Counter = Counter()
+    for f in all_facts:
+        for t in (f.get("tags") or []):
+            counter[t] += 1
+
+    if not counter:
+        console.print("\n  [dim]No tags found.[/dim]\n")
+        return
+
+    if sort == "name":
+        items = sorted(counter.items())
+    else:
+        items = counter.most_common()
+    items = items[:limit]
+
+    console.print(f"\n  [bold]{len(counter)} distinct tag(s)[/bold] "
+                  f"(showing {len(items)}):\n")
+    for name, cnt in items:
+        console.print(f"  [cyan]{name:30}[/cyan] [dim]{cnt}[/dim]")
+    console.print()
 
 
 @app.command()
