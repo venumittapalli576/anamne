@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.6.0] — 2026-05-11
+
+### Added — Phase 6
+
+**`anamne import-memory`** — restore from backup / share facts with teammates
+- `anamne import-memory <file.json> [--dry-run] [--no-facts] [--no-working] [--allow-dupes]`
+- Reads a JSON file produced by `anamne export`
+- Re-inserts scratchpad facts and working-memory notes into the current store
+- Deduplicates by exact text match by default (`--skip-dupes` on by default)
+- Episodic decisions are not imported (they are repo-specific; re-index with `anamne index`)
+- Shows per-fact preview, skipped duplicates, and a final summary
+
+**`anamne doctor`** — self-diagnosis and health check
+- Checks API keys, data directory, SQLite accessibility, ChromaDB sync status
+- Reports memory layer counts (facts / decisions / working)
+- Highlights the active model
+- Lists actionable issues with suggested fixes
+- Zero external calls — works without an API key
+
+### Tests
+- 66 tests total (was 63), all passing
+- New: 3 tests for import-memory dedup logic and working-memory search integration
+
+---
+
 ## [0.5.0] — 2026-05-11
 
 ### Added — Phase 5

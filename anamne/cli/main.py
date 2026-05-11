@@ -1219,6 +1219,125 @@ def export(
         console.print(content)
 
 
+@app.command(name="import-memory")
+def import_memory(
+    file: Path = typer.Argument(..., help="ANAMNE JSON export file to import"),
+    no_facts: bool = typer.Option(False, "--no-facts", help="Skip scratchpad facts"),
+    no_working: bool = typer.Option(False, "--no-working", help="Skip working memory"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without storing"),
+    skip_dupes: bool = typer.Option(
+        True, "--skip-dupes/--allow-dupes",
+        help="Skip facts whose exact text already exists in scratchpad (default: skip)",
+    ),
+    ttl: int = typer.Option(
+        60, "--ttl", help="TTL in minutes for imported working-memory notes"
+    ),
+) -> None:
+    """Import facts from another ANAMNE JSON export (backup restore / team sharing).
+
+    Reads the JSON produced by `anamne export` and re-inserts scratchpad facts
+    and active working-memory notes into the current store.
+
+    Episodic decisions are NOT imported — they are repo-specific and should be
+    re-indexed with `anamne index` instead.
+
+    Examples:
+      anamne import-memory backup.json
+      anamne import-memory team-facts.json --dry-run
+      anamne import-memory old-machine.json --no-working --allow-dupes
+    """
+    import json as _json
+
+    file_path = file.resolve()
+    if not file_path.exists():
+        console.print(f"[red]File not found:[/red] {file_path}")
+        raise typer.Exit(1)
+
+    try:
+        payload = _json.loads(file_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        console.print(f"[red]Could not parse JSON:[/red] {e}")
+        raise typer.Exit(1)
+
+    if not isinstance(payload, dict):
+        console.print("[red]Invalid export file — expected a JSON object.[/red]")
+        raise typer.Exit(1)
+
+    export_version = payload.get("version", "unknown")
+    exported_at = payload.get("exported_at", "unknown")
+    console.print(
+        f"\n[bold]Import from[/bold] [cyan]{file_path.name}[/cyan]  "
+        f"[dim](exported {exported_at}, anamne {export_version})[/dim]\n"
+    )
+
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+
+    # ---- Scratchpad facts ----
+    facts_imported = facts_skipped = 0
+    if not no_facts:
+        raw_facts = payload.get("scratchpad_facts", [])
+        if not isinstance(raw_facts, list):
+            raw_facts = []
+
+        # Build existing-text set for dedup
+        if skip_dupes:
+            existing_texts = {f["fact"].strip() for f in store.list_facts(limit=100_000)}
+        else:
+            existing_texts = set()
+
+        console.print(f"[bold]Scratchpad facts:[/bold] {len(raw_facts)} in file\n")
+        for f in raw_facts:
+            text = (f.get("fact") or "").strip()
+            tags = f.get("tags") or []
+            if not text:
+                continue
+            if skip_dupes and text in existing_texts:
+                facts_skipped += 1
+                console.print(f"  [dim]skip (duplicate):[/dim] {text[:60]}")
+                continue
+            console.print(f"  [green]+[/green] {text[:72]}{'…' if len(text) > 72 else ''}")
+            if not dry_run:
+                store.remember(text, tags=tags)
+                existing_texts.add(text)
+            facts_imported += 1
+
+    # ---- Working memory ----
+    working_imported = 0
+    if not no_working:
+        raw_working = payload.get("working_memory", [])
+        if not isinstance(raw_working, list):
+            raw_working = []
+        if raw_working:
+            console.print(f"\n[bold]Working memory:[/bold] {len(raw_working)} note(s)\n")
+            for w in raw_working:
+                note = (w.get("note") or "").strip()
+                if not note:
+                    continue
+                console.print(f"  [green]+[/green] {note[:72]}{'…' if len(note) > 72 else ''}")
+                if not dry_run:
+                    store.working_add(note, ttl_minutes=ttl)
+                working_imported += 1
+
+    # ---- Summary ----
+    if dry_run:
+        console.print(
+            f"\n[yellow]Dry run[/yellow] — nothing stored. "
+            f"Would import {facts_imported} fact(s), {working_imported} working note(s)."
+        )
+    else:
+        parts = []
+        if facts_imported:
+            parts.append(f"{facts_imported} fact(s)")
+        if facts_skipped:
+            parts.append(f"{facts_skipped} duplicate(s) skipped")
+        if working_imported:
+            parts.append(f"{working_imported} working note(s)")
+        console.print(
+            f"\n[green]Imported:[/green] {', '.join(parts) or 'nothing new'}"
+        )
+
+
 @app.command(name="capture-clipboard")
 def capture_clipboard(
     dry_run: bool = typer.Option(
@@ -1449,6 +1568,134 @@ def clear(
     if layer in ("episodic", "all"):
         n = store.clear_episodic()
         console.print(f"[green]Cleared[/green] {n} episodic decision(s)")
+
+
+@app.command()
+def doctor() -> None:
+    """Diagnose common ANAMNE problems and report the health of your installation.
+
+    Checks:
+      • API key configuration (Anthropic / Gemini)
+      • Data directory and SQLite accessibility
+      • ChromaDB collections and scratchpad sync status
+      • Memory layer counts
+      • Version info
+
+    Run this first when something isn't working as expected.
+    """
+    import sys
+    from pathlib import Path as _Path
+    from rich.table import Table
+
+    ok_mark   = "[green]OK [/green]"
+    warn_mark = "[yellow]!! [/yellow]"
+    fail_mark = "[red]ERR[/red]"
+
+    issues: list[str] = []
+
+    console.print()
+    console.print("[bold]ANAMNE Doctor[/bold]  —  installation health check\n")
+
+    # ── Version ──────────────────────────────────────────────────────────── #
+    from anamne import __version__
+    console.print(f"  {ok_mark}  anamne version   : [cyan]{__version__}[/cyan]")
+    console.print(f"  {ok_mark}  python           : {sys.version.split()[0]}")
+
+    # ── Config & API keys ─────────────────────────────────────────────────── #
+    try:
+        from anamne.config import get_settings
+        cfg = get_settings()
+        data_dir = cfg.data_dir
+        console.print(f"  {ok_mark}  data directory   : {data_dir}")
+    except Exception as e:
+        console.print(f"  {fail_mark}  config error     : {e}")
+        issues.append(f"config: {e}")
+        data_dir = _Path.home() / ".anamne"
+
+    has_anthropic = bool(getattr(cfg, "anthropic_api_key", None))
+    has_gemini    = bool(getattr(cfg, "gemini_api_key", None))
+
+    if has_anthropic:
+        console.print(f"  {ok_mark}  ANTHROPIC_API_KEY: set")
+    else:
+        console.print(f"  {warn_mark}  ANTHROPIC_API_KEY: [yellow]not set[/yellow]")
+
+    if has_gemini:
+        console.print(f"  {ok_mark}  GEMINI_API_KEY   : set")
+    else:
+        console.print(f"  {warn_mark}  GEMINI_API_KEY   : [yellow]not set[/yellow]")
+
+    if not has_anthropic and not has_gemini:
+        issues.append("No LLM API key set — run `anamne init` or set ANTHROPIC_API_KEY / GEMINI_API_KEY in .env")
+        console.print(f"        [red]→ No API key configured. LLM commands will fail.[/red]")
+
+    # ── Data directory ────────────────────────────────────────────────────── #
+    if data_dir.exists():
+        console.print(f"  {ok_mark}  data dir exists  : yes")
+    else:
+        console.print(f"  {warn_mark}  data dir exists  : [yellow]no (will be created on first use)[/yellow]")
+
+    # ── SQLite ────────────────────────────────────────────────────────────── #
+    try:
+        from anamne.store.graph import DecisionStore
+        store = DecisionStore()
+        facts     = store.fact_count()
+        decisions = store.count()
+        working   = len(store.working_active())
+        console.print(f"  {ok_mark}  SQLite           : accessible")
+        console.print(f"  {ok_mark}  scratchpad facts : {facts}")
+        console.print(f"  {ok_mark}  episodic records : {decisions}")
+        console.print(f"  {ok_mark}  working memory   : {working} active")
+    except Exception as e:
+        console.print(f"  {fail_mark}  SQLite error     : [red]{e}[/red]")
+        issues.append(f"SQLite: {e}")
+        store = None
+
+    # ── ChromaDB ──────────────────────────────────────────────────────────── #
+    if store is not None:
+        try:
+            chroma_facts    = store._scratch_col.count()
+            chroma_episodes = store._col.count()
+            chroma_working  = store._working_col.count()
+
+            # Scratchpad sync check
+            if chroma_facts < facts:
+                lag = facts - chroma_facts
+                console.print(
+                    f"  {warn_mark}  ChromaDB scratchpad: {chroma_facts} "
+                    f"[yellow](SQLite has {facts} — {lag} not yet embedded)[/yellow]"
+                )
+                issues.append(
+                    f"ChromaDB scratchpad is {lag} fact(s) behind SQLite. "
+                    "This is auto-fixed on the next startup."
+                )
+            else:
+                console.print(f"  {ok_mark}  ChromaDB scratchpad: {chroma_facts} (in sync)")
+
+            console.print(f"  {ok_mark}  ChromaDB episodic  : {chroma_episodes}")
+            console.print(f"  {ok_mark}  ChromaDB working   : {chroma_working}")
+        except Exception as e:
+            console.print(f"  {fail_mark}  ChromaDB error   : [red]{e}[/red]")
+            issues.append(f"ChromaDB: {e}")
+
+    # ── Model ─────────────────────────────────────────────────────────────── #
+    if store is not None:
+        try:
+            model = cfg.resolved_model()
+            console.print(f"  {ok_mark}  active model     : [cyan]{model}[/cyan]")
+        except Exception:
+            console.print(f"  {warn_mark}  active model     : [yellow]could not resolve[/yellow]")
+
+    # ── Summary ───────────────────────────────────────────────────────────── #
+    console.print()
+    if issues:
+        console.print(f"[yellow]Found {len(issues)} issue(s):[/yellow]\n")
+        for i, issue in enumerate(issues, 1):
+            console.print(f"  [yellow]{i}.[/yellow] {issue}")
+        console.print()
+    else:
+        console.print("[green]Everything looks healthy![/green]  "
+                      "Run [bold]anamne status[/bold] for memory stats.\n")
 
 
 @app.command()

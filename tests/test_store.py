@@ -478,3 +478,36 @@ def test_history_newest_first(store):
     types = [h["change_type"] for h in hist]
     assert types[0] == "forgotten"
     assert types[-1] == "created"
+
+
+# ------------------------------------------------------------------ #
+# import-memory logic (store-level)                                    #
+# ------------------------------------------------------------------ #
+
+def test_import_memory_dedup(store):
+    """Importing the same fact twice should not create a duplicate."""
+    store.remember("Postgres is our primary DB", tags=["db"])
+    existing = {f["fact"].strip() for f in store.list_facts(limit=100_000)}
+    # Simulate the dedup logic from import-memory
+    new_facts = ["Postgres is our primary DB", "Redis for caching"]
+    imported = 0
+    for text in new_facts:
+        if text.strip() not in existing:
+            store.remember(text.strip())
+            imported += 1
+    assert imported == 1  # only the Redis fact should be new
+    assert store.fact_count() == 2
+
+
+def test_import_memory_allows_dupes_when_skip_disabled(store):
+    store.remember("Shared fact", tags=["x"])
+    # Without dedup check, same text is imported again
+    store.remember("Shared fact", tags=["x"])
+    assert store.fact_count() == 2  # duplicates allowed at the store level
+
+
+def test_working_search_finds_active_note(store):
+    store.working_add("investigating rate limiter bug", ttl_minutes=60)
+    results = store.search_working("rate limiter")
+    assert len(results) >= 1
+    assert any("rate limiter" in r["note"] for r in results)

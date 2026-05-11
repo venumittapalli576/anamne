@@ -105,12 +105,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 6 — Future ideas
+## What's Built (v0.6.0)
+
+| Feature | Status |
+|---|---|
+| `anamne import-memory <file>` — restore backup / share facts across machines | ✅ |
+| `anamne doctor` — health check: API keys, SQLite, ChromaDB sync, model | ✅ |
+| 66 tests, 100% passing | ✅ |
+
+---
+
+## Phase 7 — Future ideas
 
 - **Browser extension** — "Remember this?" prompt on pages you read
-- **`anamne import-memory <file>`** — import from another anamne JSON export (team sharing)
-- **Scheduled auto-sync** — cron job to run `anamne sync` on watched repos
-- **`anamne doctor`** — diagnose common issues (missing API key, corrupt DB, stale ChromaDB)
+- **Scheduled auto-sync** — `anamne watch-repos` daemon watches N repos and calls `sync` on change
+- **`anamne import-web --site`** — crawl an entire documentation site and distill facts
+- **Tag auto-suggest** — LLM proposes tags when you `remember` without specifying any
+- **Fact graph view** — visualise tag clusters and fact relationships in the UI
 
 ---
 

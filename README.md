@@ -201,6 +201,26 @@ anamne clear scratchpad        # or: working | episodic | all
 anamne status
 ```
 
+### Backup, restore, and sharing
+
+```bash
+# Export all memories to JSON (for backup or sharing)
+anamne export --output backup.json
+anamne export --format markdown --output memories.md
+
+# Import from another ANAMNE export (restore backup, or merge a teammate's facts)
+anamne import-memory backup.json
+anamne import-memory team-shared-facts.json --dry-run   # preview first
+anamne import-memory old-machine.json --no-working      # skip working memory
+```
+
+### Diagnostics
+
+```bash
+# Run a full health check — API keys, SQLite, ChromaDB, model config
+anamne doctor
+```
+
 ### Local web dashboard
 
 ```bash
