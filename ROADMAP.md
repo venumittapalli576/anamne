@@ -300,14 +300,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 23 - Future ideas
+## What's Built (v0.23.0)
+
+| Feature | Status |
+|---|---|
+| `anamne search-all <query>` - cross-layer hybrid scan | ✅ |
+| `anamne tag-search <prefix>` - prefix-match tag lookup | ✅ |
+| `anamne shell` tab completion via stdlib readline | ✅ |
+
+---
+
+## Phase 24 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne shell` tab completion** with `readline`
-- **`anamne search-all`** - search across episodic + scratchpad + working
+- **`anamne diff <id1> <id2>`** - compare fact contents side-by-side
 
 ---
 

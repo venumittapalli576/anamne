@@ -151,6 +151,12 @@ anamne search "python preference" --limit 5 --tag backend
 anamne search deploy --pinned       # only pinned facts
 anamne search auth --json           # pipe-friendly JSON
 
+# Cross-layer scan: scratchpad + episodic + working, all at once
+anamne search-all "auth design"
+
+# Find tags by prefix
+anamne tag-search post              # finds postgres, postgresql, ...
+
 # Pure-semantic search (embeddings only, no substring match)
 anamne similar "why we picked our database"
 anamne similar "deployment philosophy" --limit 5

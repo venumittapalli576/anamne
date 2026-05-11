@@ -4,6 +4,32 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.23.0] — 2026-05-11
+
+### Added - Phase 23
+
+**`anamne search-all <query>`** - cross-layer scan
+- Returns up to `--limit` results EACH from scratchpad, episodic, and working
+- Scratchpad uses ACT-R-ranked hybrid search
+- Episodic uses ChromaDB semantic similarity
+- Working uses substring + semantic
+- Useful when you don't know which layer holds the answer
+
+**`anamne tag-search <prefix>`** - tag prefix lookup
+- Case-insensitive prefix match against every tag
+- Sorted by frequency (most-used first), with counts
+- Helpful for half-remembered tag names
+
+**`anamne shell` tab completion**
+- Tab completion on the shell command name via stdlib `readline`
+- `re<TAB>` -> `remember`, `s<TAB><TAB>` -> `search/similar/status`
+- Silently skipped on platforms without `readline` (e.g. plain Windows console)
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.22.0] — 2026-05-11
 
 ### Added - Phase 22

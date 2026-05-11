@@ -3637,6 +3637,98 @@ def mcp_server() -> None:
     run()
 
 
+@app.command(name="search-all")
+def search_all(
+    query: str = typer.Argument(..., help="Search term"),
+    limit: int = typer.Option(5, "--limit", "-n",
+                              help="Max results PER LAYER (default 5)"),
+) -> None:
+    """Search across all three memory layers in one shot.
+
+    Returns up to `--limit` results each from:
+      - Scratchpad (ACT-R ranked hybrid search)
+      - Episodic decisions (ChromaDB semantic search)
+      - Working memory (substring + semantic)
+
+    A fast cross-layer scan when you don't know where the answer lives.
+
+    Examples:
+      anamne search-all postgres
+      anamne search-all "auth design" --limit 3
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+
+    # Scratchpad
+    scratch = store.search_facts_ranked(query, limit=limit)
+    # Episodic
+    episodic = store.search(query, n_results=limit)
+    # Working
+    work = store.search_working(query, limit=limit)
+
+    if not (scratch or episodic or work):
+        console.print(f"\n  [dim]No results across any layer for "
+                      f"'[cyan]{query}[/cyan]'.[/dim]\n")
+        return
+
+    console.print(f"\n  [bold]Cross-layer search:[/bold] '[cyan]{query}[/cyan]'\n")
+
+    if scratch:
+        console.print(f"  [bold]Scratchpad[/bold]  [dim]({len(scratch)})[/dim]")
+        for f in scratch:
+            pin = " [yellow]*[/yellow]" if f.get("pinned") else ""
+            console.print(f"    [cyan]{f['id']}[/cyan]{pin}  {f['fact'][:80]}")
+        console.print()
+
+    if episodic:
+        console.print(f"  [bold]Episodic[/bold]  [dim]({len(episodic)})[/dim]")
+        for d in episodic:
+            console.print(f"    [cyan]{d.short_ref}[/cyan]  {d.content[:80]}")
+            console.print(f"        [dim]why:[/dim] {(d.why or '')[:80]}")
+        console.print()
+
+    if work:
+        console.print(f"  [bold]Working[/bold]  [dim]({len(work)})[/dim]")
+        for w in work:
+            console.print(f"    [cyan]{w['id']}[/cyan]  {w['note'][:80]}")
+        console.print()
+
+
+@app.command(name="tag-search")
+def tag_search(
+    prefix: str = typer.Argument(..., help="Tag prefix to match"),
+    limit: int = typer.Option(30, "--limit", "-n", help="Max matches"),
+) -> None:
+    """Find tags by prefix (case-insensitive), with fact counts.
+
+    Useful when you remember "I tagged it 'postg-something'" but not the
+    full spelling. Sorted by frequency, most-used first.
+
+    Examples:
+      anamne tag-search post   # finds postgres, postgresql, posting
+      anamne tag-search py
+    """
+    from collections import Counter
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    counter: Counter = Counter()
+    p_lower = prefix.lower()
+    for f in store.list_facts(limit=10_000):
+        for t in (f.get("tags") or []):
+            if t.lower().startswith(p_lower):
+                counter[t] += 1
+    if not counter:
+        console.print(f"\n  [dim]No tags starting with '[cyan]{prefix}[/cyan]'.[/dim]\n")
+        return
+    items = counter.most_common(limit)
+    console.print(f"\n  [bold]{len(items)} tag(s) starting with '[cyan]{prefix}[/cyan]':[/bold]\n")
+    for name, cnt in items:
+        console.print(f"  [cyan]{name:30}[/cyan]  [dim]{cnt}[/dim]")
+    console.print()
+
+
 @app.command()
 def tail(
     interval: int = typer.Option(5, "--interval", "-i",
@@ -3748,12 +3840,32 @@ def shell() -> None:
       help                  - show this help
       exit | quit | Ctrl-D  - leave the shell
 
+    Tab completion is enabled on the command name (e.g. `re<TAB>` -> remember).
+
     Examples:
       anamne shell
     """
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
+    COMMANDS = (
+        "search", "similar", "remember", "journal", "working", "ask",
+        "info", "history", "recent", "tags", "status", "help", "exit", "quit",
+    )
+
+    # Best-effort tab completion via stdlib readline.  Skips silently on
+    # Windows when pyreadline is not installed - the REPL still works.
+    try:
+        import readline
+
+        def _completer(prefix: str, state: int):
+            matches = [c for c in COMMANDS if c.startswith(prefix)]
+            return matches[state] if state < len(matches) else None
+
+        readline.set_completer(_completer)
+        readline.parse_and_bind("tab: complete")
+    except Exception:
+        pass
 
     console.print()
     console.print("[bold cyan]ANAMNE shell[/bold cyan]  [dim](type 'help' or 'exit')[/dim]")
