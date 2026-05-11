@@ -259,6 +259,10 @@ anamne tag-clear web-import --yes
 
 # Delete a specific fact
 anamne forget <memory-id>
+
+# Bulk-prune stale facts older than a date (pinned facts kept by default)
+anamne prune --older-than 2025-01-01
+anamne prune --older-than 2026-01-01 --tag journal --yes
 ```
 
 ### Reminders
@@ -363,7 +367,8 @@ anamne random 3 --pinned
 # LLM-driven quiz against your facts (one Q&A per fact)
 anamne quiz
 anamne quiz --count 5 --tag architecture
-anamne quiz --count 5 --grade     # prompt for answer, LLM grades it
+anamne quiz --count 5 --grade                  # prompt for answer, LLM grades
+anamne quiz --difficulty hard --count 3        # synthesis questions, not recall
 
 # Reusable text templates for structured fact entry
 anamne template add decision "Decision: {what}. Why: {why}."

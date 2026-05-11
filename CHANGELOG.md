@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.31.0] — 2026-05-11
+
+### Added - Phase 31
+
+**`anamne prune --older-than YYYY-MM-DD`** - bulk-prune stale facts
+- Deletes scratchpad facts created before the ISO cutoff
+- `--tag X` restricts the scope
+- `--keep-pinned` (default true) preserves pinned facts; flip with
+  `--no-keep-pinned`
+- Always prints a preview (first 10) before deleting; `--yes` skips confirm
+
+**`anamne quiz --difficulty easy | normal | hard`** - difficulty knob
+- `easy`: direct recall, surface wording close to the fact
+- `hard`: synthesis / application; surface wording deliberately distant
+- Difficulty drives the question-generation prompt only - grading still
+  compares against the LLM's reference answer
+
+**`anamne template show <name>`** - print one template body
+- Useful before `template use` when you've forgotten the placeholder names
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.30.0] — 2026-05-11
 
 ### Added - Phase 30

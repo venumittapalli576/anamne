@@ -382,13 +382,24 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 31 - Future ideas
+## What's Built (v0.31.0)
+
+| Feature | Status |
+|---|---|
+| `anamne prune --older-than YYYY-MM-DD` - bulk-prune stale facts | ✅ |
+| `--tag` filter, `--keep-pinned/--no-keep-pinned`, `--yes` for prune | ✅ |
+| `anamne quiz --difficulty easy\|normal\|hard` | ✅ |
+| `anamne template show <name>` - print one template body | ✅ |
+
+---
+
+## Phase 32 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
-- **`anamne quiz --difficulty hard`** - LLM-controlled difficulty knob
-- **`anamne forget --older-than DATE`** - bulk-prune stale facts
+- **`anamne prune --no-retrievals-since DATE`** - prune unused facts
+- **`anamne quiz --resume`** - continue an unfinished quiz session
 
 ---
 

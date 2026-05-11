@@ -704,6 +704,79 @@ def forget(
 
 
 @app.command()
+def prune(
+    older_than: str = typer.Option(
+        ..., "--older-than", "-o", metavar="YYYY-MM-DD",
+        help="Delete facts created before this date"
+    ),
+    tag: list[str] = typer.Option(
+        [], "--tag", "-t",
+        help="Restrict to facts with this tag (repeatable)"
+    ),
+    keep_pinned: bool = typer.Option(
+        True, "--keep-pinned/--no-keep-pinned",
+        help="Skip pinned facts (default: yes)"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Bulk-prune stale scratchpad facts older than a given ISO date.
+
+    Pinned facts are preserved by default (use `--no-keep-pinned` to override).
+    Tag filters apply on top of the date cutoff. Dry-run preview is shown
+    before confirmation unless `--yes` is given.
+
+    Examples:
+      anamne prune --older-than 2025-01-01
+      anamne prune --older-than 2026-01-01 --tag journal --yes
+      anamne prune --older-than 2024-12-31 --no-keep-pinned
+    """
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    candidates = store.list_facts(limit=100_000, tags=tag or None)
+    candidates = [f for f in candidates if (f.get("created_at") or "") < older_than]
+    if keep_pinned:
+        candidates = [f for f in candidates if not f.get("pinned")]
+
+    if not candidates:
+        console.print(
+            f"\n  [dim]Nothing to prune older than {older_than}"
+            + (f", tag={','.join(tag)}" if tag else "")
+            + (" (pinned kept)" if keep_pinned else "")
+            + ".[/dim]\n"
+        )
+        return
+
+    console.print(
+        f"\n  [yellow]Would delete {len(candidates)} fact(s) "
+        f"created before {older_than}"
+        + (f", tag={','.join(tag)}" if tag else "")
+        + (" (pinned preserved)" if keep_pinned else "")
+        + ".[/yellow]\n"
+    )
+    for f in candidates[:10]:
+        console.print(f"  [dim]{f['id']}  {(f.get('created_at') or '')[:10]}[/dim]  "
+                      f"{f['fact'][:80]}")
+    if len(candidates) > 10:
+        console.print(f"  [dim]... and {len(candidates) - 10} more[/dim]")
+    console.print()
+
+    if not yes:
+        if not typer.confirm(f"Delete {len(candidates)} fact(s)?", default=False):
+            console.print("[dim]Cancelled.[/dim]\n")
+            return
+
+    deleted = 0
+    for f in candidates:
+        try:
+            if store.forget_fact(f["id"]):
+                deleted += 1
+        except Exception:
+            pass
+    console.print(f"\n  [green]Pruned {deleted} fact(s).[/green]\n")
+
+
+@app.command()
 def pin(
     memory_id: str = typer.Argument(..., help="Scratchpad fact ID to pin"),
 ) -> None:
@@ -3792,7 +3865,7 @@ def _save_templates(data: dict) -> None:
 @app.command()
 def template(
     action: str = typer.Argument(
-        ..., help="Action: add | list | use | remove | export | import"
+        ..., help="Action: add | list | show | use | remove | export | import"
     ),
     name: Optional[str] = typer.Argument(None, help="Template name (for add/use/remove)"),
     body: Optional[str] = typer.Argument(
@@ -3857,6 +3930,18 @@ def template(
         del templates[name]
         _save_templates(templates)
         console.print(f"\n  [green]Removed[/green]  [cyan]{name}[/cyan]\n")
+        return
+
+    if action == "show":
+        if not name:
+            console.print("[red]usage: anamne template show <name>[/red]")
+            raise typer.Exit(code=1)
+        if name not in templates:
+            console.print(f"[yellow]No template named '{name}'.[/yellow]")
+            raise typer.Exit(code=1)
+        console.print(f"\n  [cyan]{name}[/cyan]\n")
+        console.print(templates[name])
+        console.print()
         return
 
     if action == "export":
@@ -3935,7 +4020,7 @@ def template(
 
     console.print(
         f"[red]Unknown action '{action}'. "
-        "Use add | list | use | remove | export | import.[/red]"
+        "Use add | list | show | use | remove | export | import.[/red]"
     )
     raise typer.Exit(code=1)
 
@@ -3947,6 +4032,10 @@ def quiz(
     grade: bool = typer.Option(
         False, "--grade", "-g",
         help="Interactive: ask the user, then LLM-grade each answer"
+    ),
+    difficulty: str = typer.Option(
+        "normal", "--difficulty", "-d",
+        help="Difficulty: easy | normal | hard"
     ),
 ) -> None:
     """LLM-driven Q&A drill against your scratchpad facts.
@@ -3985,13 +4074,32 @@ def quiz(
     partial_count = 0
     wrong_count = 0
 
+    diff_clauses = {
+        "easy": (
+            "The question should be a direct recall question - test whether the "
+            "user can remember the fact verbatim."
+        ),
+        "hard": (
+            "The question must require synthesis or application, not direct "
+            "recall. Phrase it so the surface wording differs significantly "
+            "from the fact, and the user has to reason about why or when the "
+            "fact applies."
+        ),
+        "normal": (
+            "The question should be a clear comprehension check at moderate "
+            "difficulty."
+        ),
+    }
+    diff_clause = diff_clauses.get(difficulty.lower(), diff_clauses["normal"])
+
     console.print(f"\n  [bold]Quiz[/bold]  [dim]({len(sample)} question(s)"
-                  f"{' - interactive grading' if grade else ''})[/dim]\n")
+                  f"{' - interactive grading' if grade else ''}"
+                  f", difficulty={difficulty})[/dim]\n")
     for i, f in enumerate(sample, start=1):
         prompt = (
             "Write one short quiz question about the fact below, then on a "
-            "new line write the one-sentence answer. Reply EXACTLY in this "
-            "format:\n"
+            "new line write the one-sentence answer. " + diff_clause + " "
+            "Reply EXACTLY in this format:\n"
             "Q: <question>\nA: <answer>\n\n"
             f"FACT: {f['fact']}"
         )
