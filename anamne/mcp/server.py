@@ -148,9 +148,25 @@ def working_memory_active() -> list[dict]:
 
 
 @mcp.tool()
-def search_facts(query: str, limit: int = 10) -> list[dict]:
-    """Substring search over scratchpad facts, ranked by ACT-R activation (recency + frequency)."""
-    return _store.search_facts_ranked(query, limit=limit)
+def search_facts(
+    query: str,
+    limit: int = 10,
+    tags: list[str] | None = None,
+) -> list[dict]:
+    """Hybrid search over scratchpad facts (substring + semantic), ranked by ACT-R activation.
+
+    Optionally filter by one or more tags. Tags are ANDed: a fact must have
+    at least one of the provided tags to appear in results.
+
+    Examples:
+      search_facts("postgres")
+      search_facts("auth", tags=["security", "backend"])
+    """
+    results = _store.search_facts_ranked(query, limit=limit * 2 if tags else limit)
+    if tags:
+        tag_set = set(tags)
+        results = [f for f in results if tag_set.intersection(f.get("tags", []))]
+    return results[:limit]
 
 
 @mcp.tool()

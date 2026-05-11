@@ -280,6 +280,22 @@ ANAMNE is for individual humans who use AI tools daily:
 
 ---
 
+## Publishing to PyPI (maintainer notes)
+
+Pushing a `vX.Y.Z` tag triggers the publish workflow automatically via PyPI Trusted Publishing:
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+One-time setup: add a Trusted Publisher at https://pypi.org/manage/account/publishing/ with:
+- Repository: `venumittapalli576/anamne`
+- Workflow: `publish.yml`
+- Environment: `pypi`
+
+---
+
 ## License
 
 MIT. Open source. Bring your own key. Zero telemetry.

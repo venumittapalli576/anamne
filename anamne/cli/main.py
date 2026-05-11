@@ -459,6 +459,94 @@ def forget(
 
 
 @app.command()
+def info(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID to inspect"),
+) -> None:
+    """Show full details of a scratchpad fact, including ACT-R activation score.
+
+    Example:
+      anamne info abc123def456
+    """
+    from anamne.store.graph import DecisionStore
+    from rich.table import Table
+
+    store = DecisionStore()
+    fact = store.get_fact(memory_id)
+
+    if fact is None:
+        console.print(f"[red]No fact found with id:[/red] {memory_id}")
+        raise typer.Exit(1)
+
+    table = Table(
+        border_style="cyan", show_header=False, padding=(0, 2),
+    )
+    table.add_column("Field", style="cyan", no_wrap=True)
+    table.add_column("Value")
+
+    table.add_row("ID", fact["id"])
+    table.add_row("Fact", fact["fact"])
+    table.add_row("Tags", ", ".join(fact["tags"]) if fact["tags"] else "(none)")
+    table.add_row("Created", fact["created_at"])
+    table.add_row("Last used", fact["last_used_at"])
+    table.add_row("Use count", str(fact["use_count"]))
+    table.add_row(
+        "ACT-R activation",
+        f"{fact['activation']:.4f}" if fact["activation"] else "0.0 (never retrieved)",
+    )
+
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@app.command()
+def tag(
+    memory_id: str = typer.Argument(..., help="Scratchpad fact ID"),
+    add: list[str] = typer.Option([], "--add", "-a", help="Tag to add (repeatable)"),
+    remove: list[str] = typer.Option([], "--remove", "-r", help="Tag to remove (repeatable)"),
+    set_: list[str] = typer.Option(
+        [], "--set", "-s", help="Replace ALL tags with these (repeatable)"
+    ),
+) -> None:
+    """Add, remove, or replace tags on an existing scratchpad fact.
+
+    Examples:
+      anamne tag abc123 --add python --add backend
+      anamne tag abc123 --remove deprecated
+      anamne tag abc123 --set python --set testing   # replaces all tags
+    """
+    if not (add or remove or set_):
+        # Show current tags if no operation specified
+        from anamne.store.graph import DecisionStore
+        fact = DecisionStore().get_fact(memory_id)
+        if fact is None:
+            console.print(f"[red]No fact with id {memory_id}[/red]")
+            raise typer.Exit(1)
+        tags = fact["tags"]
+        console.print(f"Tags on [cyan]{memory_id}[/cyan]: {', '.join(tags) if tags else '(none)'}")
+        return
+
+    from anamne.store.graph import DecisionStore
+    store = DecisionStore()
+
+    new_tags = store.update_fact_tags(
+        memory_id,
+        add=add or None,
+        remove=remove or None,
+        set_tags=set_ or None,
+    )
+
+    if new_tags is None:
+        console.print(f"[red]No fact with id {memory_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[green]Updated[/green] [cyan]{memory_id}[/cyan] — "
+        f"tags: {', '.join(new_tags) if new_tags else '(none)'}"
+    )
+
+
+@app.command()
 def consolidate(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview merges without writing anything"

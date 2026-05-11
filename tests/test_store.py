@@ -155,6 +155,50 @@ def test_search_facts_ranked(store):
 
 
 # ------------------------------------------------------------------ #
+# get_fact and update_fact_tags                                          #
+# ------------------------------------------------------------------ #
+
+def test_get_fact_returns_none_for_missing(store):
+    assert store.get_fact("doesnotexist") is None
+
+
+def test_get_fact_returns_full_record(store):
+    mid = store.remember("Full record test", tags=["test"])
+    fact = store.get_fact(mid)
+    assert fact is not None
+    assert fact["id"] == mid
+    assert fact["fact"] == "Full record test"
+    assert "test" in fact["tags"]
+    assert "activation" in fact
+    assert fact["use_count"] == 0
+
+
+def test_update_fact_tags_add(store):
+    mid = store.remember("Untagged fact")
+    result = store.update_fact_tags(mid, add=["python", "backend"])
+    assert "python" in result
+    assert "backend" in result
+
+
+def test_update_fact_tags_remove(store):
+    mid = store.remember("Tagged fact", tags=["python", "old"])
+    result = store.update_fact_tags(mid, remove=["old"])
+    assert "old" not in result
+    assert "python" in result
+
+
+def test_update_fact_tags_set(store):
+    mid = store.remember("Override tags", tags=["x", "y", "z"])
+    result = store.update_fact_tags(mid, set_tags=["only"])
+    assert result == ["only"]
+
+
+def test_update_fact_tags_missing_fact(store):
+    result = store.update_fact_tags("doesnotexist", add=["tag"])
+    assert result is None
+
+
+# ------------------------------------------------------------------ #
 # Working memory                                                         #
 # ------------------------------------------------------------------ #
 

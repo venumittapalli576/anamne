@@ -270,6 +270,55 @@ class DecisionStore:
             results = [f for f in results if tag_set.intersection(f["tags"])]
         return results[:limit]
 
+    def get_fact(self, mem_id: str) -> Optional[dict]:
+        """Return a single scratchpad fact by id, or None if not found."""
+        with sqlite3.connect(self._db) as con:
+            row = con.execute(
+                "SELECT id, fact, tags, created_at, last_used_at, use_count "
+                "FROM scratchpad WHERE id = ?",
+                (mem_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0], "fact": row[1], "tags": json.loads(row[2]),
+            "created_at": row[3], "last_used_at": row[4], "use_count": row[5],
+            "activation": self.activation_score(row[0]),
+        }
+
+    def update_fact_tags(
+        self,
+        mem_id: str,
+        add: Optional[list[str]] = None,
+        remove: Optional[list[str]] = None,
+        set_tags: Optional[list[str]] = None,
+    ) -> Optional[list[str]]:
+        """Add, remove, or replace tags on an existing scratchpad fact.
+
+        Returns the updated tag list, or None if the fact doesn't exist.
+        If set_tags is provided, it replaces all tags entirely.
+        """
+        current = self.get_fact(mem_id)
+        if current is None:
+            return None
+
+        if set_tags is not None:
+            new_tags = list(set_tags)
+        else:
+            tag_set = set(current["tags"])
+            if add:
+                tag_set.update(add)
+            if remove:
+                tag_set.difference_update(remove)
+            new_tags = sorted(tag_set)
+
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                "UPDATE scratchpad SET tags = ? WHERE id = ?",
+                (json.dumps(new_tags), mem_id),
+            )
+        return new_tags
+
     def clear_scratchpad(self) -> int:
         """Delete all scratchpad facts. Returns count deleted."""
         with sqlite3.connect(self._db) as con:
