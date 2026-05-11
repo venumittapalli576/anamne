@@ -688,3 +688,36 @@ def test_promote_working_creates_scratchpad_and_removes_working(store):
 
 def test_promote_working_missing_returns_none(store):
     assert store.promote_working("no-such-id") is None
+
+
+# ------------------------------------------------------------------ #
+# Manual merge - happy path via store primitives                        #
+# ------------------------------------------------------------------ #
+
+def test_manual_merge_via_primitives_preserves_history(store):
+    """Simulate what `anamne merge` does: update keep, forget drop with merged_into.
+    Verify the breadcrumb history is recorded."""
+    a = store.remember("we use Postgres", tags=["db"])
+    b = store.remember("Postgres for concurrent writes", tags=["postgres"])
+
+    merged_text = "we use Postgres for concurrent writes"
+    merged_tags = sorted({"db", "postgres"})
+    store.update_fact_content(a, merged_text)
+    store.update_fact_tags(a, set_tags=merged_tags)
+    store.forget_fact(b, _merged_into=a)
+
+    # Keeper has merged content + unioned tags
+    kept = store.get_fact(a)
+    assert kept is not None
+    assert kept["fact"] == merged_text
+    assert kept["tags"] == merged_tags
+
+    # Donor is gone
+    assert store.get_fact(b) is None
+
+    # History on the donor includes a merged_into breadcrumb to the keeper
+    history = store.get_fact_history(b)
+    assert any(
+        h["change_type"] == "merged_into" and h.get("merged_into") == a
+        for h in history
+    )

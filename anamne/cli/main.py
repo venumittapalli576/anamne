@@ -3813,6 +3813,10 @@ def merge(
         False, "--llm",
         help="Use the LLM to write a merged sentence (default: concatenate with '. ')"
     ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-d",
+        help="Show the proposed merge without applying it"
+    ),
 ) -> None:
     """Manually merge two scratchpad facts into one.
 
@@ -3865,6 +3869,17 @@ def merge(
 
     merged_tags = sorted(set((a.get("tags") or []) + (b.get("tags") or [])))
 
+    if dry_run:
+        console.print(
+            f"\n  [bold]Dry run - no changes applied[/bold]\n\n"
+            f"  [dim]keep:[/dim]    [cyan]{keep_id}[/cyan]\n"
+            f"  [dim]drop:[/dim]    [cyan]{drop_id}[/cyan]\n"
+            f"  [dim]merged:[/dim]  {merged_text}\n"
+            f"  [dim]tags:[/dim]    {', '.join(merged_tags) or '-'}\n\n"
+            f"  Re-run without [bold]--dry-run[/bold] to apply.\n"
+        )
+        return
+
     # Update content + tags on the keeper
     store.update_fact_content(keep_id, merged_text)
     store.update_fact_tags(keep_id, set_tags=merged_tags)
@@ -3877,6 +3892,97 @@ def merge(
         f"  [dim]tags:[/dim]   {', '.join(merged_tags) or '-'}\n"
         f"  [dim]dropped:[/dim] [cyan]{drop_id}[/cyan] (history -> {keep_id})\n"
     )
+
+
+@app.command()
+def snapshot(
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o",
+        help="Write to file (default: print to stdout)"
+    ),
+    limit: int = typer.Option(50, "--limit", "-n",
+                              help="Max facts per section"),
+) -> None:
+    """Print a compact human-readable Markdown snapshot of your memory.
+
+    Sections:
+      - Pinned facts
+      - Top-activation unpinned facts
+      - Recently added facts (last 7 days)
+      - Active working memory
+
+    Useful for pasting into a chat or a daily standup doc.
+
+    Examples:
+      anamne snapshot
+      anamne snapshot --output today.md
+      anamne snapshot --limit 30
+    """
+    from datetime import datetime, timezone, timedelta
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore()
+    all_facts = store.list_facts(limit=10_000)
+    pinned = [f for f in all_facts if f.get("pinned")]
+    unpinned_scored = sorted(
+        ((store.activation_score(f["id"]), f) for f in all_facts if not f.get("pinned")),
+        key=lambda x: x[0], reverse=True,
+    )
+    top_unpinned = [f for _, f in unpinned_scored[:limit]]
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    recent_facts = sorted(
+        [f for f in all_facts if (f.get("created_at") or "") >= week_ago],
+        key=lambda f: f.get("created_at") or "",
+        reverse=True,
+    )[:limit]
+    working = store.working_active()[:limit]
+
+    lines: list[str] = ["# ANAMNE memory snapshot",
+                        f"_{datetime.now().strftime('%Y-%m-%d %H:%M')}_\n"]
+
+    lines.append(f"## Pinned ({len(pinned)})\n")
+    if pinned:
+        for f in pinned:
+            tag_str = (" `#" + "` `#".join(f["tags"]) + "`") if f["tags"] else ""
+            lines.append(f"- {f['fact']}{tag_str}")
+    else:
+        lines.append("_None._")
+    lines.append("")
+
+    lines.append(f"## Top activation ({len(top_unpinned)})\n")
+    if top_unpinned:
+        for f in top_unpinned:
+            tag_str = (" `#" + "` `#".join(f["tags"]) + "`") if f["tags"] else ""
+            lines.append(f"- {f['fact']}{tag_str}")
+    else:
+        lines.append("_None._")
+    lines.append("")
+
+    lines.append(f"## Recent - last 7 days ({len(recent_facts)})\n")
+    if recent_facts:
+        for f in recent_facts:
+            day = (f.get("created_at") or "")[:10]
+            lines.append(f"- _{day}_  {f['fact']}")
+    else:
+        lines.append("_None._")
+    lines.append("")
+
+    lines.append(f"## Working ({len(working)})\n")
+    if working:
+        for w in working:
+            exp = (w.get("expires_at") or "")[:19]
+            lines.append(f"- {w['note']} _(expires {exp})_")
+    else:
+        lines.append("_None._")
+    lines.append("")
+
+    text = "\n".join(lines)
+    if output:
+        output.write_text(text, encoding="utf-8")
+        console.print(f"\n  [green]Snapshot written[/green]  [bold]{output}[/bold]\n")
+    else:
+        # Use plain print so the Markdown survives stdout redirection
+        print(text)
 
 
 @app.command(name="search-all")

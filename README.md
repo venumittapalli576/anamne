@@ -241,7 +241,8 @@ anamne diff <id1> <id2>
 
 # Manually merge two facts into one (keeps keep_id, deletes drop_id)
 anamne merge <keep_id> <drop_id>
-anamne merge <keep_id> <drop_id> --llm   # LLM-rewritten merged sentence
+anamne merge <keep_id> <drop_id> --llm        # LLM-rewritten merged sentence
+anamne merge <keep_id> <drop_id> --dry-run    # preview before applying
 
 # Rename a tag across every fact (e.g. fix typos)
 anamne tag-rename pyhton python
@@ -346,6 +347,10 @@ anamne backup --keep 7              # daily cron: retain last week of backups
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
+
+# Markdown snapshot: Pinned + Top activation + Recent + Working
+anamne snapshot
+anamne snapshot --output today.md --limit 30
 ```
 
 ### Diagnostics

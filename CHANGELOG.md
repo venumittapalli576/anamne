@@ -4,6 +4,26 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.26.0] — 2026-05-11
+
+### Added - Phase 26
+
+**`anamne merge --dry-run`** - preview merge before applying
+- Shows proposed merged text + unioned tags, applies nothing
+- Lets you iterate on `--llm` rewrites without committing
+- Pairs with `anamne diff` for safe deduplication workflows
+
+**`anamne snapshot`** - Markdown memory snapshot
+- Four sections: Pinned, Top activation, Recent (7 days), Working
+- `--output FILE` to write a `.md` file; otherwise prints to stdout
+- `--limit N` caps each section (default 50)
+- Ready to paste into a chat or a standup doc
+
+### Tests
+- 87 tests, all passing (+1 covering manual merge history breadcrumb)
+
+---
+
 ## [0.25.0] — 2026-05-11
 
 ### Added - Phase 25
