@@ -3638,6 +3638,98 @@ def mcp_server() -> None:
 
 
 @app.command()
+def tail(
+    interval: int = typer.Option(5, "--interval", "-i",
+                                 help="Poll interval in seconds (min 1)"),
+    once: bool = typer.Option(False, "--once", help="Print snapshot and exit"),
+) -> None:
+    """Live-tail recent memory activity (Ctrl-C to stop).
+
+    Polls the SQLite database every `--interval` seconds and prints any new
+    fact creations, retrievals, history events, and working notes since the
+    last tick. Useful while doing something else in parallel - the AI assistant
+    adds facts in the background and you can watch them land.
+
+    Examples:
+      anamne tail                # poll every 5 seconds
+      anamne tail --interval 1   # snappier (more CPU)
+      anamne tail --once         # one snapshot, no loop
+    """
+    import sqlite3
+    import time
+    from datetime import datetime, timezone, timedelta
+    from anamne.store.graph import DecisionStore
+
+    if interval < 1:
+        interval = 1
+
+    store = DecisionStore()
+    db = store._db
+    cursor_ts = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+    console.print(f"\n  [bold]anamne tail[/bold]  [dim](Ctrl-C to stop, "
+                  f"interval {interval}s)[/dim]\n")
+
+    try:
+        while True:
+            new_cursor = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(db) as con:
+                facts_new = con.execute(
+                    "SELECT id, fact, created_at FROM scratchpad "
+                    "WHERE created_at > ? ORDER BY created_at ASC",
+                    (cursor_ts,),
+                ).fetchall()
+                try:
+                    retr_new = con.execute(
+                        "SELECT fact_id, retrieved_at FROM retrieval_log "
+                        "WHERE retrieved_at > ? ORDER BY retrieved_at ASC",
+                        (cursor_ts,),
+                    ).fetchall()
+                except Exception:
+                    retr_new = []
+                try:
+                    hist_new = con.execute(
+                        "SELECT fact_id, change_type, changed_at FROM fact_history "
+                        "WHERE changed_at > ? ORDER BY changed_at ASC",
+                        (cursor_ts,),
+                    ).fetchall()
+                except Exception:
+                    hist_new = []
+                work_new = con.execute(
+                    "SELECT id, note, created_at FROM working_memory "
+                    "WHERE created_at > ? ORDER BY created_at ASC",
+                    (cursor_ts,),
+                ).fetchall()
+
+            for fid, fact, created in facts_new:
+                console.print(
+                    f"  [dim]{created[:19]}[/dim]  [green]+fact[/green]  "
+                    f"[cyan]{fid}[/cyan]  {fact[:70]}"
+                )
+            for fid, at in retr_new:
+                console.print(
+                    f"  [dim]{at[:19]}[/dim]  [cyan]~retr[/cyan]   "
+                    f"[cyan]{fid}[/cyan]"
+                )
+            for fid, ct, at in hist_new:
+                console.print(
+                    f"  [dim]{at[:19]}[/dim]  [yellow]!hist[/yellow]   "
+                    f"[cyan]{fid}[/cyan]  ({ct})"
+                )
+            for wid, note, created in work_new:
+                console.print(
+                    f"  [dim]{created[:19]}[/dim]  [magenta]+work[/magenta]  "
+                    f"[cyan]{wid}[/cyan]  {note[:70]}"
+                )
+
+            cursor_ts = new_cursor
+            if once:
+                return
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        console.print("\n  [dim]stopped[/dim]\n")
+
+
+@app.command()
 def shell() -> None:
     """Interactive REPL for ANAMNE - run commands without re-launching the CLI.
 

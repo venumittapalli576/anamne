@@ -1,12 +1,13 @@
 ﻿"""
 ANAMNE MCP Server  - plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 18 memory tools covering all three LIGHT layers:
+Exposes 21 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
   Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
               update_fact, get_fact_history, search_facts, consolidate_facts,
-              pin_fact, unpin_fact
-  Working   : working_memory_add, working_memory_active, search_working_memory
+              pin_fact, unpin_fact, related_facts, mark_fact
+  Working   : working_memory_add, working_memory_active, search_working_memory,
+              promote_working
 """
 
 from __future__ import annotations
@@ -297,6 +298,61 @@ def unpin_fact(memory_id: str) -> dict:
     if not ok:
         return {"error": f"No fact found with id: {memory_id}"}
     return {"id": memory_id, "pinned": False}
+
+
+@mcp.tool()
+def related_facts(memory_id: str, limit: int = 10) -> list[dict]:
+    """Find scratchpad facts most semantically similar to a given fact.
+
+    Uses ChromaDB nearest-neighbor query on the source fact's text. Excludes
+    the source itself. Returns a list of {id, fact, tags, pinned}.
+
+    Useful for surfacing hidden duplicates or related context that exact
+    keyword search would miss.
+    """
+    return _store.related_facts(memory_id, limit=limit)
+
+
+@mcp.tool()
+def promote_working(working_id: str, tags: list[str] | None = None) -> dict:
+    """Promote a working-memory note into a permanent scratchpad fact.
+
+    The working note is removed; a new scratchpad fact is created with the
+    same text and the optional tags. Returns {old_working_id, new_fact_id}
+    on success or {error} if the working note doesn't exist.
+    """
+    new_id = _store.promote_working(working_id, tags=tags)
+    if new_id is None:
+        return {"error": f"No working note with id: {working_id}"}
+    return {"old_working_id": working_id, "new_fact_id": new_id}
+
+
+@mcp.tool()
+def mark_fact(memory_id: str, note: str) -> dict:
+    """Attach a free-text audit note to a fact's history.
+
+    Records a `note` change_type entry in fact_history. The fact content
+    is NOT modified. Use this for marginalia like "verified 2026-05-11" or
+    "linked to ADR-042". Visible via get_fact_history().
+
+    Returns {id, note, ok} on success or {error} if the fact doesn't exist.
+    """
+    import json as _json
+    import sqlite3
+    from datetime import datetime, timezone
+
+    fact = _store.get_fact(memory_id)
+    if fact is None:
+        return {"error": f"No fact found with id: {memory_id}"}
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(_store._db) as con:
+        con.execute(
+            "INSERT INTO fact_history "
+            "(fact_id, content, tags, changed_at, change_type, merged_into) "
+            "VALUES (?, ?, ?, ?, 'note', NULL)",
+            (memory_id, note, _json.dumps(fact["tags"]), now),
+        )
+    return {"id": memory_id, "note": note, "ok": True}
 
 
 def run() -> None:

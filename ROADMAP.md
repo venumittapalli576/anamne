@@ -288,14 +288,26 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 22 - Future ideas
+## What's Built (v0.22.0)
+
+| Feature | Status |
+|---|---|
+| `anamne tail` - live tail of memory events (`--interval`, `--once`) | ✅ |
+| MCP `related_facts` tool | ✅ |
+| MCP `promote_working` tool | ✅ |
+| MCP `mark_fact` tool | ✅ |
+| 21 MCP tools total | ✅ |
+
+---
+
+## Phase 23 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **Multi-user sharing** - export/import signed bundles with provenance
 - **Fact templates** - `anamne template add "Decision: {decision} because {reason}"`
 - **`anamne ask --layer episodic+scratchpad`** - compound layer filter
 - **`anamne shell` tab completion** with `readline`
-- **`anamne tail`** - live tail of memory events
+- **`anamne search-all`** - search across episodic + scratchpad + working
 
 ---
 

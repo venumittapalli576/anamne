@@ -344,6 +344,15 @@ anamne shell
 # anamne> exit
 ```
 
+### Live tail
+
+```bash
+# Watch new facts, retrievals, and history events as they happen
+anamne tail
+anamne tail --interval 1   # snappier polling
+anamne tail --once         # single snapshot, no loop
+```
+
 ### Local web dashboard
 
 ```bash
@@ -367,7 +376,7 @@ anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 
 ## MCP Integration
 
-ANAMNE exposes **18 tools** through the MCP protocol, giving any compatible AI assistant
+ANAMNE exposes **21 tools** through the MCP protocol, giving any compatible AI assistant
 direct access to your memory layers:
 
 | Tool | Layer | What it does |
@@ -387,9 +396,12 @@ direct access to your memory layers:
 | `consolidate_facts` | Scratchpad | Merge redundant facts (ACC-style) |
 | `pin_fact` | Scratchpad | Protect a fact from auto-consolidation |
 | `unpin_fact` | Scratchpad | Remove consolidation protection |
+| `related_facts` | Scratchpad | Semantic neighbors of a fact |
+| `mark_fact` | Scratchpad | Attach an audit note to a fact's history |
 | `working_memory_add` | Working | Add a session note (auto-expires) |
 | `working_memory_active` | Working | Get active session context |
 | `search_working_memory` | Working | Semantic search over session notes |
+| `promote_working` | Working | Move a working note to scratchpad |
 
 ### Claude Code
 

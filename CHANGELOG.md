@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.22.0] — 2026-05-11
+
+### Added - Phase 22
+
+**`anamne tail`** - live tail of memory activity
+- Polls SQLite every `--interval` seconds (default 5)
+- Shows new fact creations (+fact), retrievals (~retr), history events (!hist),
+  and working notes (+work)
+- `--once` for a single snapshot
+- Ctrl-C stops cleanly
+
+**3 new MCP tools (21 total)**
+- `related_facts(memory_id, limit)` - semantic neighbors of a fact
+- `promote_working(working_id, tags)` - move working note to scratchpad
+- `mark_fact(memory_id, note)` - attach audit annotation to fact history
+
+### Tests
+- 86 tests, all passing
+
+---
+
 ## [0.21.0] — 2026-05-11
 
 ### Added - Phase 21
