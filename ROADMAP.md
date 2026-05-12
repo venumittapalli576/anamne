@@ -592,7 +592,7 @@ and the gaps are obvious.
 
 - **LIGHT** ([arXiv 2510.27246](https://arxiv.org/abs/2510.27246)) — three-layer memory framework
 - **ACT-R Memory Architecture** — temporal decay + semantic activation (Anderson & Lebiere 1998)
-- **Agent Cognitive Compressor** — bounded compressed state
+- **Agent Cognitive Compressor** ([arXiv 2601.11653](https://arxiv.org/abs/2601.11653)) — bounded compressed state
 - **Hippocampal indexing theory** — long-term storage as compressed patterns
 - **Lore protocol** ([arXiv 2603.15566](https://arxiv.org/abs/2603.15566)) — git-as-knowledge-protocol
 

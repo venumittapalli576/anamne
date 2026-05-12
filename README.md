@@ -49,7 +49,7 @@ That's the loop. Everything else is variations on capture and recall.
 
 ANAMNE is built around three memory layers from the
 [LIGHT framework](https://arxiv.org/abs/2510.27246) and the
-[Agent Cognitive Compressor](https://arxiv.org/abs/2510.27246):
+[Agent Cognitive Compressor](https://arxiv.org/abs/2601.11653):
 
 | Layer | What it stores | Decay |
 |---|---|---|
@@ -232,7 +232,8 @@ If you want a memory layer for yourself, use ANAMNE.
   three-layer memory framework with layer-priority conflict resolution
 - **ACT-R** (Anderson & Lebiere 1998) — `A_i = ln(Σ t_j^-d)` decay
   formula; every retrieval is timestamped in `retrieval_log`
-- **Agent Cognitive Compressor** — bounded compressed state: top-K
+- **Agent Cognitive Compressor** ([arXiv 2601.11653](https://arxiv.org/abs/2601.11653))
+  — bounded compressed state: top-K
   verbatim, tail compressed
 - **Hippocampal indexing theory** — long-term storage as compressed
   patterns
