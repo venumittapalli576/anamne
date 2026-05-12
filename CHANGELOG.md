@@ -4,6 +4,34 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.1] — 2026-05-12
+
+First patch release. Fixes discovered during real stdio-handshake testing
+of the v1.0.0 release.
+
+### Fixed
+- MCP server now reports its own version (e.g. `anamne 1.0.1`) instead of
+  FastMCP's framework version (`anamne 3.2.4`). Clients can now reliably
+  detect anamne upgrades from the `initialize` response.
+
+### Added
+- `tests/test_mcp_integration.py`: full end-to-end stdio handshake test
+  that boots `anamne mcp-server` as a subprocess, performs the MCP
+  `initialize` + `tools/list` flow, and asserts every registered tool
+  surfaces over the wire. Closes #2.
+- Skipped automatically in CI when no LLM API key is configured.
+
+### Why this matters
+While validating the v1.0.0 release, the integration test caught a real
+loose end: the MCP server was reporting `anamne 3.2.4` (the FastMCP
+framework version) instead of the package version. Without this fix,
+client-side version detection of anamne would have been impossible.
+
+### Tests
+- 89 tests, all passing (+2 new MCP integration tests)
+
+---
+
 ## [1.0.0] — 2026-05-12
 
 First stable release.

@@ -14,11 +14,13 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from anamne import __version__
 from anamne.agents.oracle import OracleAgent
 from anamne.store.graph import DecisionStore
 
 mcp = FastMCP(
     name="anamne",
+    version=__version__,
     instructions=(
         "ANAMNE is a brain-inspired personal memory layer. "
         "Use remember() to store facts the user wants kept across sessions. "
