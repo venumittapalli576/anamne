@@ -517,12 +517,22 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 44 - Future ideas
+## What's Built (v0.44.0)
+
+| Feature | Status |
+|---|---|
+| `anamne tool-call --help-tool` - print tool signature + docstring | ✅ |
+| `anamne audit-log --tail --json` - structured tail stream | ✅ |
+| `anamne sync-cloud --schedule --once-then-exit` - cron-friendly | ✅ |
+
+---
+
+## Phase 45 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **`anamne tool-call --help-tool <name>`** - print signature + docstring
-- **`anamne sync-cloud --schedule --once-then-exit`** - run once for cron compat
-- **`anamne audit-log --tail --json`** - structured tail stream
+- **`anamne shell` history file** - persistent across sessions
+- **`anamne tools --grep <substr>`** - filter tool list by name/desc
+- **`anamne snapshot --include-archived`** - dump previous fact versions too
 
 ---
 

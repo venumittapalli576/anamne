@@ -4,6 +4,27 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.44.0] — 2026-05-12
+
+### Added - Phase 44
+
+**`anamne tool-call --help-tool`** - print tool signature + docstring
+- No execution; just shows what the tool expects and what it does
+- Great companion to `anamne tools` for exploring the surface
+
+**`anamne audit-log --tail --json`** - structured tail stream
+- Emits one JSON object per new event (`{fact_id, change_type, hash, ...}`)
+- Pipe-friendly: `anamne audit-log --tail --json | jq`
+
+**`anamne sync-cloud --schedule --once-then-exit`** - cron-mode
+- Runs exactly one sync and exits (no infinite loop)
+- Pairs naturally with system cron / Task Scheduler
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.43.0] — 2026-05-12
 
 ### Added - Phase 43

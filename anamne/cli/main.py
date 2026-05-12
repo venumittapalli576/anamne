@@ -4062,13 +4062,21 @@ def audit_log(
                         when or "", ct or "", mi or "", prev,
                     ])
                     prev = hashlib.sha256(body.encode("utf-8")).hexdigest()
-                    snippet = ((content or "")[:60]).replace("\n", " ")
-                    console.print(
-                        f"  [dim]{(when or '')[:19]}[/dim]  "
-                        f"[yellow]{(ct or '?'): <14}[/yellow]  "
-                        f"[cyan]{(fid or '')[:14]}[/cyan]  {snippet}"
-                    )
-                    console.print(f"      [dim]hash:[/dim] {prev[:32]}...")
+                    if as_json:
+                        # One JSON object per line - jq / line-stream consumers
+                        print(json.dumps({
+                            "fact_id": fid, "change_type": ct,
+                            "changed_at": when, "merged_into": mi,
+                            "content": content, "hash": prev,
+                        }, default=str), flush=True)
+                    else:
+                        snippet = ((content or "")[:60]).replace("\n", " ")
+                        console.print(
+                            f"  [dim]{(when or '')[:19]}[/dim]  "
+                            f"[yellow]{(ct or '?'): <14}[/yellow]  "
+                            f"[cyan]{(fid or '')[:14]}[/cyan]  {snippet}"
+                        )
+                        console.print(f"      [dim]hash:[/dim] {prev[:32]}...")
                     if when and when > last_seen:
                         last_seen = when
                 _time.sleep(5)
@@ -4330,6 +4338,11 @@ def sync_cloud(
         0, "--schedule", "-s", metavar="SECONDS",
         help="Run as a foreground daemon, syncing every N seconds (0=one-shot)"
     ),
+    once_then_exit: bool = typer.Option(
+        False, "--once-then-exit",
+        help="With --schedule, run exactly one sync then exit (cron-friendly "
+             "no-op when nothing changed)"
+    ),
 ) -> None:
     """Two-way bridge between ANAMNE and a personal git mirror.
 
@@ -4359,19 +4372,30 @@ def sync_cloud(
         if pull:
             console.print("[red]--schedule is only valid in push mode.[/red]")
             raise typer.Exit(code=1)
+        if once_then_exit:
+            console.print(
+                f"\n  [bold]sync-cloud[/bold]  [dim](single tick, cron mode)[/dim]\n"
+            )
+            try:
+                sync_cloud(  # type: ignore[misc]
+                    repo_dir=repo_dir, message=message, push=push,
+                    pull=False, yes=yes, decrypt=decrypt, encrypt=encrypt,
+                    schedule=0, once_then_exit=False,
+                )
+            except typer.Exit:
+                pass
+            return
         console.print(
             f"\n  [bold]sync-cloud daemon[/bold]  "
             f"[dim](every {schedule}s; Ctrl-C to stop)[/dim]\n"
         )
         try:
             while True:
-                # Re-invoke the same logic by recursion-less direct call.
-                # Reset --schedule to 0 in the inner call so it runs once.
                 try:
                     sync_cloud(  # type: ignore[misc]
                         repo_dir=repo_dir, message=message, push=push,
                         pull=False, yes=yes, decrypt=decrypt, encrypt=encrypt,
-                        schedule=0,
+                        schedule=0, once_then_exit=False,
                     )
                 except typer.Exit:
                     pass
@@ -4753,6 +4777,10 @@ def tool_call(
     args_json: Optional[str] = typer.Argument(
         None, help="JSON object of arguments, e.g. '{\"query\":\"postgres\"}'"
     ),
+    help_tool: bool = typer.Option(
+        False, "--help-tool", "-H",
+        help="Print signature + docstring for this tool and exit"
+    ),
 ) -> None:
     """Invoke an MCP tool directly from the CLI - no LLM, no MCP client needed.
 
@@ -4776,6 +4804,15 @@ def tool_call(
         console.print(f"[red]No MCP tool named '{name}'.[/red]  "
                       "Run `anamne tools` for the list.")
         raise typer.Exit(code=1)
+
+    if help_tool:
+        sig = inspect.signature(fn)
+        doc = inspect.getdoc(fn) or "(no docstring)"
+        console.print(f"\n  [bold]{name}[/bold]{sig}\n")
+        for line in doc.splitlines():
+            console.print(f"  {line}")
+        console.print()
+        return
 
     kwargs: dict = {}
     if args_json:
