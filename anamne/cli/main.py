@@ -3984,6 +3984,17 @@ def audit_log(
         None, "--remote-anchor", metavar="URL",
         help="POST the head hash + length to a webhook (Slack/Discord style)"
     ),
+    since: Optional[str] = typer.Option(
+        None, "--since", metavar="YYYY-MM-DD",
+        help="Restrict the chain to entries on/after this date"
+    ),
+    until: Optional[str] = typer.Option(
+        None, "--until", metavar="YYYY-MM-DD",
+        help="Restrict the chain to entries on/before this date (inclusive day)"
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Print the audit log as JSON instead of pretty text"
+    ),
 ) -> None:
     """Tamper-evident audit log of every memory mutation.
 
@@ -4006,10 +4017,21 @@ def audit_log(
 
     store = DecisionStore()
     db = store._db
+    where = []
+    params: list = []
+    if since:
+        where.append("changed_at >= ?")
+        params.append(since)
+    if until:
+        where.append("changed_at <= ?")
+        params.append(until + "T23:59:59")
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     with sqlite3.connect(db) as con:
         rows = con.execute(
             "SELECT fact_id, content, tags, changed_at, change_type, merged_into "
-            "FROM fact_history ORDER BY changed_at ASC, rowid ASC"
+            "FROM fact_history" + where_sql +
+            " ORDER BY changed_at ASC, rowid ASC",
+            params,
         ).fetchall()
 
     chain: list[dict] = []
@@ -4075,6 +4097,13 @@ def audit_log(
             console.print(f"  [red]Anchor webhook failed:[/red] {e}\n")
         if not (output or check):
             return
+
+    if as_json:
+        console.print(json.dumps(
+            {"length": chain_len, "head": head, "entries": chain},
+            indent=2, default=str,
+        ))
+        return
 
     if output:
         # Full JSONL dump
@@ -4230,6 +4259,14 @@ def sync_cloud(
         False, "--yes", "-y",
         help="Skip confirmation prompts in --pull mode"
     ),
+    decrypt: bool = typer.Option(
+        False, "--decrypt",
+        help="Decrypt an AES-GCM envelope before processing (uses $ANAMNE_ENC_KEY)"
+    ),
+    encrypt: bool = typer.Option(
+        False, "--encrypt",
+        help="Wrap the pushed export in an AES-GCM envelope (uses $ANAMNE_ENC_KEY)"
+    ),
 ) -> None:
     """Two-way bridge between ANAMNE and a personal git mirror.
 
@@ -4276,6 +4313,36 @@ def sync_cloud(
         except Exception as e:
             console.print(f"[red]Cannot parse export file:[/red] {e}")
             raise typer.Exit(code=1)
+        # Transparent decrypt if the file is an AES-GCM envelope
+        if data.get("_anamne_envelope") or decrypt:
+            import base64
+            import hashlib
+            import os as _os
+            try:
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+            except Exception:
+                console.print(
+                    "[red]Encrypted envelope but `cryptography` is not "
+                    "installed.[/red]"
+                )
+                raise typer.Exit(code=1)
+            enc_key = _os.environ.get("ANAMNE_ENC_KEY")
+            if not enc_key:
+                console.print(
+                    "[red]Decrypting requires ANAMNE_ENC_KEY in the "
+                    "environment.[/red]"
+                )
+                raise typer.Exit(code=1)
+            aes_key = hashlib.sha256(enc_key.encode("utf-8")).digest()
+            try:
+                nonce = base64.b64decode(data["nonce"])
+                ct = base64.b64decode(data["ciphertext"])
+                plaintext = AESGCM(aes_key).decrypt(nonce, ct, None)
+                data = json.loads(plaintext.decode("utf-8"))
+            except Exception as e:
+                console.print(f"[red]Decryption failed:[/red] {e}")
+                raise typer.Exit(code=1)
+            console.print("  [green]Decrypted envelope.[/green]")
         facts = data.get("scratchpad_facts", []) or []
         decisions = data.get("episodic_decisions", []) or []
         working = data.get("working_memory", []) or []
@@ -4319,8 +4386,39 @@ def sync_cloud(
         ],
     }
     target = repo_dir / "anamne-export.json"
-    target.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    console.print(f"  [dim]Wrote[/dim] {target}")
+    body = json.dumps(payload, indent=2, default=str)
+    if encrypt:
+        import base64
+        import hashlib
+        import os as _os
+        try:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        except Exception:
+            console.print(
+                "[red]--encrypt requires the `cryptography` package "
+                "(`pip install cryptography`).[/red]"
+            )
+            raise typer.Exit(code=1)
+        enc_key = _os.environ.get("ANAMNE_ENC_KEY")
+        if not enc_key:
+            console.print(
+                "[red]--encrypt requires ANAMNE_ENC_KEY in the environment.[/red]"
+            )
+            raise typer.Exit(code=1)
+        aes_key = hashlib.sha256(enc_key.encode("utf-8")).digest()
+        nonce = _os.urandom(12)
+        ct = AESGCM(aes_key).encrypt(nonce, body.encode("utf-8"), None)
+        envelope = {
+            "_anamne_envelope": "AES-GCM-256",
+            "nonce": base64.b64encode(nonce).decode("ascii"),
+            "ciphertext": base64.b64encode(ct).decode("ascii"),
+        }
+        body = json.dumps(envelope, indent=2)
+    target.write_text(body, encoding="utf-8")
+    console.print(
+        f"  [dim]Wrote[/dim] {target}"
+        + ("  [green](encrypted)[/green]" if encrypt else "")
+    )
 
     msg = message or f"anamne sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     try:

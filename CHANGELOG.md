@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.42.0] — 2026-05-12
+
+### Added - Phase 42
+
+**`anamne audit-log --since / --until`** - windowed audit chain
+- Recompute the hash chain over a date window only
+- Useful for cron jobs that anchor a daily window's head hash
+
+**`anamne audit-log --json`** - structured stdout
+- Emits `{length, head, entries: [...]}` for piping into jq / dashboards
+
+**`anamne sync-cloud --encrypt`** - encrypted git mirror push
+- Wraps `anamne-export.json` in the AES-GCM envelope before committing
+- Uses the same `ANAMNE_ENC_KEY` env var as `export --encrypt`
+
+**`anamne sync-cloud --pull --decrypt`** - transparent encrypted-mirror ingest
+- Auto-detects envelope format; `--decrypt` forces the path explicitly
+- Works end-to-end: push --encrypt on machine A, pull on machine B reads
+  the same AES-GCM envelope
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.41.0] — 2026-05-11
 
 ### Added - Phase 41

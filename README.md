@@ -376,6 +376,8 @@ anamne notebook py.ipynb --runnable               # adds a live-query code cell
 anamne sync-cloud --repo ~/anamne-mirror
 anamne sync-cloud --repo ~/anamne-mirror --no-push
 anamne sync-cloud --repo ~/anamne-mirror --pull --yes   # ingest from mirror
+ANAMNE_ENC_KEY=hunter2 anamne sync-cloud --repo ~/anamne-mirror --encrypt
+ANAMNE_ENC_KEY=hunter2 anamne sync-cloud --repo ~/anamne-mirror --pull --decrypt
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
@@ -418,6 +420,8 @@ anamne audit-log --check                 # head-hash check for periodic snapshot
 anamne audit-log --output audit.jsonl    # full chain to a file
 anamne audit-log --verify <head-hash>    # exit 1 if head no longer matches
 anamne audit-log --remote-anchor https://hooks.slack.com/...
+anamne audit-log --since 2026-05-01 --until 2026-05-31
+anamne audit-log --json | jq .head
 ```
 
 ### Interactive shell

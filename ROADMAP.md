@@ -496,13 +496,23 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 42 - Future ideas
+## What's Built (v0.42.0)
+
+| Feature | Status |
+|---|---|
+| `anamne audit-log --since / --until` - windowed hash chain | ✅ |
+| `anamne audit-log --json` - structured output | ✅ |
+| `anamne sync-cloud --encrypt` - AES-GCM envelope on push | ✅ |
+| `anamne sync-cloud --pull --decrypt` (auto-detected too) | ✅ |
+
+---
+
+## Phase 43 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
 - **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne audit-log --since <date>`** - chain over a date window
-- **`anamne audit-log --json`** - structured stdout for scripts
-- **`anamne sync-cloud --pull --encrypt`** - encrypted git mirror by default
+- **`anamne audit-log --tail`** - live-tail chain head as facts mutate
+- **`anamne mcp tool-call <name> --json args`** - call a tool from CLI without an LLM
 
 ---
 
