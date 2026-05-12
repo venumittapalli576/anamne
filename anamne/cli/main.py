@@ -380,7 +380,7 @@ def watch(
             break
 
 
-@app.command(name="watch-repos")
+@app.command(name="watch-repos", hidden=True)
 def watch_repos(
     repos: list[Path] = typer.Argument(
         ..., help="Git repository paths to watch (space-separated)"
@@ -683,7 +683,7 @@ def remember(
             console.print(f"[dim]  tags: {', '.join(final_tags)}[/dim]")
 
 
-@app.command()
+@app.command(hidden=True)
 def recall(
     query: str = typer.Argument(..., help="What to recall from memory"),
     stream: bool = typer.Option(
@@ -896,7 +896,7 @@ def unpin(
         console.print(f"[yellow]No fact with id {memory_id}[/yellow]")
 
 
-@app.command()
+@app.command(hidden=True)
 def quote(
     memory_id: str = typer.Argument(..., help="Scratchpad fact ID to format"),
     style: str = typer.Option("plain", "--style", "-s",
@@ -943,7 +943,7 @@ def quote(
         pass
 
 
-@app.command()
+@app.command(hidden=True)
 def mark(
     memory_id: str = typer.Argument(..., help="Scratchpad fact ID to annotate"),
     note: str = typer.Argument(..., help="Short note to attach as a history event"),
@@ -1367,7 +1367,7 @@ def facts(
         console.print(f"[cyan]{f['id']}[/cyan]{pin_str}{date_str}  {f['fact']}{tag_str}")
 
 
-@app.command()
+@app.command(hidden=True)
 def recent(
     limit: int = typer.Option(10, "--limit", "-n", help="How many to show"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag"),
@@ -1419,7 +1419,7 @@ def recent(
     console.print()
 
 
-@app.command(name="bulk-tag")
+@app.command(name="bulk-tag", hidden=True)
 def bulk_tag(
     tag: str = typer.Argument(..., help="Tag to apply"),
     ids: list[str] = typer.Argument(..., help="One or more fact IDs to tag"),
@@ -1452,7 +1452,7 @@ def bulk_tag(
         console.print(f"  [yellow]{fail_count} ID(s) not found[/yellow]")
 
 
-@app.command()
+@app.command(hidden=True)
 def recap(
     days: int = typer.Option(1, "--days", "-d",
                               help="Look back N days (default: 1 = today only)"),
@@ -2792,7 +2792,7 @@ def clear(
         console.print(f"[green]Cleared[/green] {n} episodic decision(s)")
 
 
-@app.command()
+@app.command(hidden=True)
 def reminder(
     message: str = typer.Argument(..., help="Reminder text to store in working memory"),
     in_minutes: Optional[int] = typer.Option(None, "--in", "-i", metavar="MINUTES",
@@ -2903,7 +2903,7 @@ def forget_tag(
     console.print(f"\n  [green]Deleted {deleted} fact(s) with tag '[cyan]{tag}[/cyan]'.[/green]\n")
 
 
-@app.command()
+@app.command(hidden=True)
 def timeline(
     days: int = typer.Option(14, "--days", "-d", help="Days of history to show"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter facts by tag"),
@@ -3035,7 +3035,7 @@ def tags(
     console.print()
 
 
-@app.command(name="suggest-pins")
+@app.command(name="suggest-pins", hidden=True)
 def suggest_pins(
     candidates: int = typer.Option(20, "--candidates", "-n",
                                    help="How many top-activation facts to consider"),
@@ -3126,7 +3126,7 @@ def suggest_pins(
         console.print("  [dim]Run again with [bold]--apply[/bold] to pin these.[/dim]\n")
 
 
-@app.command()
+@app.command(hidden=True)
 def similar(
     text: str = typer.Argument(..., help="Free-text query"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max results"),
@@ -3166,7 +3166,7 @@ def similar(
     console.print()
 
 
-@app.command(name="suggest-tags")
+@app.command(name="suggest-tags", hidden=True)
 def suggest_tags_cmd(
     text: str = typer.Argument(..., help="Free-text content to suggest tags for"),
     max_tags: int = typer.Option(5, "--max", "-n", help="Max tag suggestions"),
@@ -3219,7 +3219,7 @@ def suggest_tags_cmd(
     console.print(f"  anamne remember \"{text[:60]}...\" {flags}\n")
 
 
-@app.command()
+@app.command(hidden=True)
 def promote(
     working_id: str = typer.Argument(..., help="Working memory note id to promote"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Tag for the new fact"),
@@ -3248,7 +3248,7 @@ def promote(
     )
 
 
-@app.command()
+@app.command(hidden=True)
 def profile() -> None:
     """LLM-generated 'about me' summary from your scratchpad facts.
 
@@ -3313,7 +3313,7 @@ def profile() -> None:
         console.print()
 
 
-@app.command()
+@app.command(hidden=True)
 def related(
     memory_id: str = typer.Argument(..., help="Memory ID to find related facts for"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max number of related facts"),
@@ -3399,7 +3399,7 @@ def tag_rename(
     )
 
 
-@app.command(name="tag-clear")
+@app.command(name="tag-clear", hidden=True)
 def tag_clear(
     tag: str = typer.Argument(..., help="Tag to remove from all facts"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -3840,7 +3840,7 @@ def stats(
         console.print()
 
 
-@app.command(name="tag-stats")
+@app.command(name="tag-stats", hidden=True)
 def tag_stats(
     top: int = typer.Option(20, "--top", "-n", help="Show top N tags"),
     history: bool = typer.Option(
@@ -3962,7 +3962,7 @@ def _detect_claude_config_path() -> Optional[Path]:
     return candidates[0] if candidates else None
 
 
-@app.command(name="audit-log")
+@app.command(name="audit-log", hidden=True)
 def audit_log(
     check: bool = typer.Option(
         False, "--check",
@@ -4216,7 +4216,7 @@ def audit_log(
     console.print(f"\n  [bold]Head:[/bold] [cyan]{head}[/cyan]\n")
 
 
-@app.command(name="key-rotate")
+@app.command(name="key-rotate", hidden=True)
 def key_rotate(
     directory: Path = typer.Argument(
         ..., help="Directory containing signed export JSON files"
@@ -4303,7 +4303,7 @@ def key_rotate(
     console.print()
 
 
-@app.command(name="sync-cloud")
+@app.command(name="sync-cloud", hidden=True)
 def sync_cloud(
     repo_dir: Path = typer.Option(
         ..., "--repo", "-r",
@@ -4674,7 +4674,7 @@ def mcp_config(
     )
 
 
-@app.command()
+@app.command(hidden=True)
 def notebook(
     output: Path = typer.Argument(..., help="Output .ipynb file"),
     tag: list[str] = typer.Option(
@@ -4771,7 +4771,7 @@ def notebook(
                   f"[dim]({len(facts)} fact(s))[/dim]\n")
 
 
-@app.command(name="tool-call")
+@app.command(name="tool-call", hidden=True)
 def tool_call(
     name: str = typer.Argument(..., help="MCP tool name (see `anamne tools`)"),
     args_json: Optional[str] = typer.Argument(
@@ -4983,7 +4983,7 @@ def mcp_server() -> None:
     run()
 
 
-@app.command()
+@app.command(hidden=True)
 def diff(
     id1: str = typer.Argument(..., help="First fact id"),
     id2: Optional[str] = typer.Argument(None, help="Second fact id (omit if --history)"),
@@ -5079,7 +5079,7 @@ def diff(
     console.print()
 
 
-@app.command(name="fact-of-the-day")
+@app.command(name="fact-of-the-day", hidden=True)
 def fact_of_the_day(
     post_to: Optional[str] = typer.Option(
         None, "--post-to", metavar="URL",
@@ -5177,7 +5177,7 @@ def _save_templates(data: dict) -> None:
     _templates_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-@app.command()
+@app.command(hidden=True)
 def template(
     action: str = typer.Argument(
         ..., help="Action: add | list | show | use | remove | export | import"
@@ -5340,7 +5340,7 @@ def template(
     raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(hidden=True)
 def quiz(
     count: int = typer.Option(3, "--count", "-n", help="Number of questions"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Restrict to facts with this tag"),
@@ -5565,7 +5565,7 @@ def quiz(
         pass
 
 
-@app.command(name="random")
+@app.command(name="random", hidden=True)
 def random_facts(
     count: int = typer.Argument(5, help="How many random facts to surface"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Filter by tag"),
@@ -5674,7 +5674,7 @@ def backup(
     console.print()
 
 
-@app.command()
+@app.command(hidden=True)
 def merge(
     keep_id: str = typer.Argument(..., help="Fact ID to keep (will hold merged content)"),
     drop_id: str = typer.Argument(..., help="Fact ID to delete (its content is merged in)"),
@@ -5763,7 +5763,7 @@ def merge(
     )
 
 
-@app.command()
+@app.command(hidden=True)
 def stash(
     text: Optional[str] = typer.Argument(None, help="Note to stash (omit to list)"),
     list_all: bool = typer.Option(False, "--list", "-l",
@@ -5835,7 +5835,7 @@ def stash(
                   f"{text[:80]}\n")
 
 
-@app.command()
+@app.command(hidden=True)
 def snapshot(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o",
@@ -6009,7 +6009,7 @@ def snapshot(
         print(text)
 
 
-@app.command(name="search-all")
+@app.command(name="search-all", hidden=True)
 def search_all(
     query: str = typer.Argument(..., help="Search term"),
     limit: int = typer.Option(5, "--limit", "-n",
@@ -6067,7 +6067,7 @@ def search_all(
         console.print()
 
 
-@app.command(name="tag-search")
+@app.command(name="tag-search", hidden=True)
 def tag_search(
     prefix: str = typer.Argument(..., help="Tag prefix to match"),
     limit: int = typer.Option(30, "--limit", "-n", help="Max matches"),
@@ -6101,7 +6101,7 @@ def tag_search(
     console.print()
 
 
-@app.command()
+@app.command(hidden=True)
 def tail(
     interval: int = typer.Option(5, "--interval", "-i",
                                  help="Poll interval in seconds (min 1)"),

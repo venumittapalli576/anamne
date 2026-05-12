@@ -527,29 +527,51 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## What's Built (v0.45.0)
+## What's Built (v1.0.0)
 
-| Feature | Status |
-|---|---|
-| `anamne shell` persistent history (~/.anamne/shell-history) | ✅ |
-| `anamne tools --grep <substr>` - filter tool list | ✅ |
-| `anamne snapshot --include-archived` - last 7 days of fact_history events | ✅ |
+First stable release. After 32 phases of feature work in the v0.x series,
+the command surface was audited and frozen:
 
----
-
-## Future direction
-
-The project is at a clean plateau. Future work is open-ended; no fixed roadmap.
+- 39 visible commands form the v1.0 stable surface (see `STABLE.md`)
+- 33 commands are kept but marked `hidden=True` - still callable by name
+  but off the menu and not part of the stability promise
+- Development Status classifier promoted from Beta to Production/Stable
+- 87 tests, all passing
 
 ---
 
-## What This Project Is Not
+## v1.x direction
 
-Things explicitly out of scope:
-- Cloud SaaS — local-first, always
-- Developer SDK for app builders — that's Mem0 / Supermemory's market
-- Enterprise memory governance — too much surface area for a solo project
-- Replacement for AI-tool-native memory features (ChatGPT memory, Claude projects)
+The v1.x series is **maintenance + real-world hardening**, not new features:
+
+- Bug fixes from actual usage
+- Performance work on large stores (50k+ facts)
+- Better error messages on common failures
+- Cross-platform CI (currently single-OS)
+- Documentation improvements
+
+No new visible commands will land in v1.x. Hidden commands may be tweaked,
+removed, or promoted to visible based on real usage signal.
+
+## v2.x possibilities (not commitments)
+
+- Browser extension - capture from web pages where you read
+- Multi-user signed-bundle sharing
+- Performance: SQLite -> something better at scale
+- Anything the v1.x usage telemetry argues for
+
+The right time to start v2 is when v1 has been used in anger for ~3 months
+and the gaps are obvious.
+
+---
+
+## Out of scope (will not be added)
+
+- Cloud SaaS - local-first, always
+- Developer SDK for app builders - that's Mem0 / Supermemory's market
+- Enterprise memory governance - too much surface for a solo project
+- Replacement for AI-tool-native memory features (ChatGPT memory, Claude
+  projects) - this complements them, not competes
 - Anything that requires hosting
 
 ---

@@ -4,6 +4,38 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.0] — 2026-05-12
+
+First stable release.
+
+### Audit & stabilization
+
+After 32 phases of feature work in the v0.x series, the command surface
+was audited and the canonical v1.0 surface was published in `STABLE.md`.
+
+- **39 commands kept visible** as the stable v1.x surface
+- **33 commands marked `hidden=True`** — still functional but off the menu;
+  reserved for power users and not covered by the stability promise
+- `STABLE.md` documents the stable command set and the v1.x stability
+  promise (no breaking changes to visible commands within v1.x)
+- Project classifier moved from Beta to Production/Stable
+
+### Hidden in v1.0 (still callable by name)
+
+Search variants: `recall`, `similar`, `related`, `search-all`
+Tag variants: `bulk-tag`, `tag-clear`, `tag-stats`, `tag-search`
+Display variants: `recent`, `quote`, `mark`, `random`, `fact-of-the-day`,
+`snapshot`, `profile`, `recap`, `timeline`, `tail`, `reminder`, `stash`
+LLM novelties: `quiz`, `template`, `suggest-pins`, `suggest-tags`
+Fact ops: `diff`, `merge`, `promote`
+Advanced: `notebook`, `sync-cloud`, `key-rotate`, `audit-log`, `watch-repos`,
+`tool-call`
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.45.0] — 2026-05-12
 
 ### Added - Phase 45
