@@ -507,12 +507,22 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 43 - Future ideas
+## What's Built (v0.43.0)
+
+| Feature | Status |
+|---|---|
+| `anamne tool-call <name> <args>` - direct MCP-tool invocation from CLI | ✅ |
+| `anamne audit-log --tail` - live hash-chain tail | ✅ |
+| `anamne sync-cloud --schedule N` - foreground daemon mode | ✅ |
+
+---
+
+## Phase 44 - Future ideas
 
 - **Browser extension** - "Remember this?" prompt on pages you read
-- **`anamne sync-cloud --schedule`** - cron-style auto-sync
-- **`anamne audit-log --tail`** - live-tail chain head as facts mutate
-- **`anamne mcp tool-call <name> --json args`** - call a tool from CLI without an LLM
+- **`anamne tool-call --help-tool <name>`** - print signature + docstring
+- **`anamne sync-cloud --schedule --once-then-exit`** - run once for cron compat
+- **`anamne audit-log --tail --json`** - structured tail stream
 
 ---
 

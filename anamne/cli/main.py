@@ -3995,6 +3995,11 @@ def audit_log(
     as_json: bool = typer.Option(
         False, "--json", help="Print the audit log as JSON instead of pretty text"
     ),
+    tail: bool = typer.Option(
+        False, "--tail",
+        help="Live-tail the chain: poll every 5s and print new events as they "
+             "land. Ctrl-C to stop."
+    ),
 ) -> None:
     """Tamper-evident audit log of every memory mutation.
 
@@ -4013,10 +4018,64 @@ def audit_log(
     """
     import hashlib
     import sqlite3
+    import time as _time
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
     db = store._db
+
+    if tail:
+        # Live tail: print every new fact_history row as it lands, with its
+        # running hash. Does NOT re-compute the full chain on every tick.
+        console.print("\n  [bold]audit-log --tail[/bold]  "
+                      "[dim](Ctrl-C to stop)[/dim]\n")
+        # Bootstrap rolling hash by replaying everything once silently
+        with sqlite3.connect(db) as con:
+            existing = con.execute(
+                "SELECT fact_id, content, tags, changed_at, change_type, "
+                "merged_into FROM fact_history ORDER BY changed_at ASC, rowid ASC"
+            ).fetchall()
+        prev = "0" * 64
+        last_seen = ""
+        for fid, content, tags, when, ct, mi in existing:
+            body = "|".join([
+                fid or "", (content or "")[:500], tags or "",
+                when or "", ct or "", mi or "", prev,
+            ])
+            prev = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            if when and when > last_seen:
+                last_seen = when
+        console.print(f"  [dim]head:[/dim] {prev[:16]}...   "
+                      f"[dim]({len(existing)} prior events)[/dim]\n")
+        try:
+            while True:
+                with sqlite3.connect(db) as con:
+                    new_rows = con.execute(
+                        "SELECT fact_id, content, tags, changed_at, change_type, "
+                        "merged_into FROM fact_history WHERE changed_at > ? "
+                        "ORDER BY changed_at ASC, rowid ASC",
+                        (last_seen,),
+                    ).fetchall()
+                for fid, content, tags, when, ct, mi in new_rows:
+                    body = "|".join([
+                        fid or "", (content or "")[:500], tags or "",
+                        when or "", ct or "", mi or "", prev,
+                    ])
+                    prev = hashlib.sha256(body.encode("utf-8")).hexdigest()
+                    snippet = ((content or "")[:60]).replace("\n", " ")
+                    console.print(
+                        f"  [dim]{(when or '')[:19]}[/dim]  "
+                        f"[yellow]{(ct or '?'): <14}[/yellow]  "
+                        f"[cyan]{(fid or '')[:14]}[/cyan]  {snippet}"
+                    )
+                    console.print(f"      [dim]hash:[/dim] {prev[:32]}...")
+                    if when and when > last_seen:
+                        last_seen = when
+                _time.sleep(5)
+        except KeyboardInterrupt:
+            console.print("\n  [dim]stopped[/dim]\n")
+            return
+
     where = []
     params: list = []
     if since:
@@ -4267,6 +4326,10 @@ def sync_cloud(
         False, "--encrypt",
         help="Wrap the pushed export in an AES-GCM envelope (uses $ANAMNE_ENC_KEY)"
     ),
+    schedule: int = typer.Option(
+        0, "--schedule", "-s", metavar="SECONDS",
+        help="Run as a foreground daemon, syncing every N seconds (0=one-shot)"
+    ),
 ) -> None:
     """Two-way bridge between ANAMNE and a personal git mirror.
 
@@ -4287,9 +4350,37 @@ def sync_cloud(
       anamne sync-cloud --repo ~/anamne-mirror --pull       # ingest
     """
     import subprocess
+    import time as _time
     from datetime import datetime
     from anamne.store.graph import DecisionStore
     from anamne import __version__
+
+    if schedule > 0:
+        if pull:
+            console.print("[red]--schedule is only valid in push mode.[/red]")
+            raise typer.Exit(code=1)
+        console.print(
+            f"\n  [bold]sync-cloud daemon[/bold]  "
+            f"[dim](every {schedule}s; Ctrl-C to stop)[/dim]\n"
+        )
+        try:
+            while True:
+                # Re-invoke the same logic by recursion-less direct call.
+                # Reset --schedule to 0 in the inner call so it runs once.
+                try:
+                    sync_cloud(  # type: ignore[misc]
+                        repo_dir=repo_dir, message=message, push=push,
+                        pull=False, yes=yes, decrypt=decrypt, encrypt=encrypt,
+                        schedule=0,
+                    )
+                except typer.Exit:
+                    pass
+                except Exception as e:
+                    console.print(f"  [red]sync error:[/red] {e}")
+                _time.sleep(schedule)
+        except KeyboardInterrupt:
+            console.print("\n  [dim]daemon stopped[/dim]\n")
+            return
 
     if not repo_dir.exists():
         console.print(f"[red]Repo directory does not exist: {repo_dir}[/red]")
@@ -4654,6 +4745,69 @@ def notebook(
     output.write_text(json.dumps(nb, indent=2), encoding="utf-8")
     console.print(f"\n  [green]Notebook written[/green]  [bold]{output}[/bold]  "
                   f"[dim]({len(facts)} fact(s))[/dim]\n")
+
+
+@app.command(name="tool-call")
+def tool_call(
+    name: str = typer.Argument(..., help="MCP tool name (see `anamne tools`)"),
+    args_json: Optional[str] = typer.Argument(
+        None, help="JSON object of arguments, e.g. '{\"query\":\"postgres\"}'"
+    ),
+) -> None:
+    """Invoke an MCP tool directly from the CLI - no LLM, no MCP client needed.
+
+    Useful for scripting against ANAMNE's tool surface (the same one Claude /
+    Cursor see), and for trying out a tool's exact behaviour without spinning
+    up an MCP client.
+
+    Examples:
+      anamne tool-call get_stats
+      anamne tool-call remember '{"fact":"Hello","tags":["test"]}'
+      anamne tool-call search_facts '{"query":"postgres","limit":3}'
+    """
+    import inspect
+
+    # Import the module so the @mcp.tool decorators run and we have access
+    # to the underlying Python functions.
+    from anamne.mcp import server as mcp_mod
+
+    fn = getattr(mcp_mod, name, None)
+    if not callable(fn):
+        console.print(f"[red]No MCP tool named '{name}'.[/red]  "
+                      "Run `anamne tools` for the list.")
+        raise typer.Exit(code=1)
+
+    kwargs: dict = {}
+    if args_json:
+        try:
+            parsed = json.loads(args_json)
+        except Exception as e:
+            console.print(f"[red]args must be valid JSON:[/red] {e}")
+            raise typer.Exit(code=1)
+        if not isinstance(parsed, dict):
+            console.print("[red]args JSON must be an object.[/red]")
+            raise typer.Exit(code=1)
+        kwargs = parsed
+
+    try:
+        result = fn(**kwargs)
+        if inspect.iscoroutine(result):
+            import asyncio
+            result = asyncio.run(result)
+    except TypeError as e:
+        console.print(f"[red]Bad arguments:[/red] {e}")
+        sig = inspect.signature(fn)
+        console.print(f"  [dim]signature:[/dim] {name}{sig}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]Tool failed:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    # Pretty-print whatever the tool returned
+    if isinstance(result, (dict, list)):
+        console.print(json.dumps(result, indent=2, default=str))
+    else:
+        console.print(str(result))
 
 
 @app.command()

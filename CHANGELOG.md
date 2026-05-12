@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.43.0] — 2026-05-12
+
+### Added - Phase 43
+
+**`anamne tool-call <name> <json-args>`** - direct MCP tool invocation
+- Calls any MCP tool exactly as Claude / Cursor would, from the CLI
+- No LLM, no MCP client needed - useful for scripts and quick checks
+- Returns pretty-printed JSON for dict/list results
+- Reports the tool's signature on bad arguments
+
+**`anamne audit-log --tail`** - live hash-chain tail
+- Bootstraps the rolling hash by replaying existing rows, then polls every
+  5s and prints any new fact_history row plus its updated chain hash
+- Ctrl-C stops cleanly
+
+**`anamne sync-cloud --schedule N`** - foreground sync daemon
+- Re-runs the push every N seconds (Ctrl-C to stop)
+- Push-only; `--pull` + `--schedule` is rejected as ambiguous
+- Survives transient errors (logged inline, loop continues)
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.42.0] — 2026-05-12
 
 ### Added - Phase 42

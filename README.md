@@ -378,6 +378,7 @@ anamne sync-cloud --repo ~/anamne-mirror --no-push
 anamne sync-cloud --repo ~/anamne-mirror --pull --yes   # ingest from mirror
 ANAMNE_ENC_KEY=hunter2 anamne sync-cloud --repo ~/anamne-mirror --encrypt
 ANAMNE_ENC_KEY=hunter2 anamne sync-cloud --repo ~/anamne-mirror --pull --decrypt
+anamne sync-cloud --repo ~/anamne-mirror --schedule 300   # push every 5 min
 
 # Surface one fact at random (pinned or high-activation) - daily reminder
 anamne fact-of-the-day
@@ -422,6 +423,7 @@ anamne audit-log --verify <head-hash>    # exit 1 if head no longer matches
 anamne audit-log --remote-anchor https://hooks.slack.com/...
 anamne audit-log --since 2026-05-01 --until 2026-05-31
 anamne audit-log --json | jq .head
+anamne audit-log --tail                  # live tail of new fact_history rows
 ```
 
 ### Interactive shell
@@ -465,6 +467,11 @@ anamne mcp-server  # stdio transport — for Claude Code, Cursor, Cline
 anamne tools
 anamne tools --json
 anamne tools --schema remember        # full JSON schema for one tool
+
+# Invoke an MCP tool directly from the CLI (no LLM, no MCP client)
+anamne tool-call get_stats
+anamne tool-call remember '{"fact":"Hello","tags":["test"]}'
+anamne tool-call search_facts '{"query":"postgres","limit":3}'
 
 # Print a paste-ready MCP config snippet
 anamne mcp-config                     # Claude Code style (default)
