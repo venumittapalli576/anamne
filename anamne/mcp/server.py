@@ -32,7 +32,23 @@ mcp = FastMCP(
 )
 
 _store = DecisionStore()
-_oracle = OracleAgent(store=_store)
+_oracle: OracleAgent | None = None
+
+
+def _get_oracle() -> OracleAgent:
+    """Lazy Oracle construction.
+
+    The Oracle eagerly initialises an LLMClient, which raises when neither
+    ANTHROPIC_API_KEY nor GEMINI_API_KEY is set. By deferring construction
+    until an LLM-dependent tool is actually called, the MCP server can boot
+    in 'partial mode' - the 18 non-LLM tools (search_facts, list_facts,
+    remember, working_memory_*, pin_fact, related_facts, etc.) work normally.
+    Only ask_why and consolidate_facts will surface the missing-key error.
+    """
+    global _oracle
+    if _oracle is None:
+        _oracle = OracleAgent(store=_store)
+    return _oracle
 
 
 @mcp.tool()
@@ -45,7 +61,14 @@ def ask_why(question: str) -> str:
       - "Why was the database switched from MySQL to PostgreSQL?"
       - "Why does the payment service exist separately?"
     """
-    return _oracle.ask(question)
+    try:
+        return _get_oracle().ask(question)
+    except Exception as e:
+        return (
+            "ask_why is unavailable: no LLM API key configured. "
+            "Set ANTHROPIC_API_KEY or GEMINI_API_KEY (run `anamne doctor` "
+            f"for details). Underlying error: {e}"
+        )
 
 
 @mcp.tool()
@@ -256,8 +279,14 @@ def consolidate_facts(
         dry_run: if True, returns the merge plan without writing anything.
         threshold: Jaccard similarity threshold for grouping (0.0-1.0).
     """
-    from anamne.agents.oracle import OracleAgent
-    agent = OracleAgent(store=_store)
+    try:
+        agent = _get_oracle()
+    except Exception as e:
+        return {
+            "error": "consolidate_facts requires an LLM API key. "
+                     "Set ANTHROPIC_API_KEY or GEMINI_API_KEY.",
+            "detail": str(e),
+        }
     merges = agent.consolidate_facts(similarity_threshold=threshold, dry_run=dry_run)
     return {
         "merges": len(merges),

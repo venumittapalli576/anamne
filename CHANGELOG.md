@@ -4,6 +4,32 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.2] — 2026-05-12
+
+### Fixed
+- **MCP server boots without an LLM API key.** Previously, `anamne mcp-server`
+  would refuse to start if neither `ANTHROPIC_API_KEY` nor `GEMINI_API_KEY`
+  was set. Since Claude Code / Cursor spawn the server as a subprocess that
+  doesn't always inherit the user's shell environment, this caused silent
+  failures — the MCP tool surface would appear empty and there'd be no
+  indication why.
+- The fix: lazy-construct `OracleAgent` only when an LLM-dependent tool
+  (`ask_why`, `consolidate_facts`) is actually called. The other 19 tools
+  (memory reads, writes, working memory, pin/unpin, related, etc.) work
+  with no LLM at all.
+- Boot-time stderr message updated to reflect partial-mode behaviour.
+
+### Added
+- **Cross-platform CI matrix.** GitHub Actions now runs the full test suite
+  on `ubuntu-latest`, `windows-latest`, and `macos-latest`. Closes #1.
+- New integration test `test_mcp_server_imports_without_api_key` covers the
+  no-key boot path so this regression cannot return silently.
+
+### Tests
+- 90 tests, all passing (+1 covering the no-key MCP boot path)
+
+---
+
 ## [1.0.1] — 2026-05-12
 
 First patch release. Fixes discovered during real stdio-handshake testing

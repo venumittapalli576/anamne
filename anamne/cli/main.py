@@ -4966,17 +4966,20 @@ def mcp_server() -> None:
     from anamne.config import get_settings
 
     cfg = get_settings()
-    if not (cfg.anthropic_api_key or cfg.gemini_api_key):
-        # Stderr-only  - must not pollute stdout
+    if cfg.anthropic_api_key or cfg.gemini_api_key:
         sys.stderr.write(
-            "anamne MCP: no LLM API key configured.\n"
-            "Run `anamne init` first, then restart your MCP host.\n"
+            f"anamne MCP server starting (model: {cfg.resolved_model()})\n"
         )
-        raise typer.Exit(1)
-
-    sys.stderr.write(
-        f"anamne MCP server starting (model: {cfg.resolved_model()})\n"
-    )
+    else:
+        # Degrade gracefully: 18 of the 21 MCP tools don't need an LLM.
+        # Boot anyway so memory reads/writes still work; LLM-dependent
+        # tools (ask_why, consolidate_facts) will surface the error at
+        # call time instead of taking the whole server down.
+        sys.stderr.write(
+            "anamne MCP server starting (NO LLM API KEY - "
+            "ask_why and consolidate_facts will fail at call time; "
+            "all other tools work normally)\n"
+        )
     sys.stderr.flush()
 
     from anamne.mcp.server import run

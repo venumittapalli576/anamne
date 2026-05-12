@@ -43,17 +43,18 @@ def _has_llm_key() -> bool:
     return False
 
 
-pytestmark = [
-    pytest.mark.skipif(
-        shutil.which("anamne") is None,
-        reason="anamne CLI entry point not on PATH (run `pip install -e .`)",
-    ),
-    pytest.mark.skipif(
-        not _has_llm_key(),
-        reason="No LLM API key configured (set ANTHROPIC_API_KEY or "
-               "GEMINI_API_KEY, or add a .env in the project root)",
-    ),
-]
+# Tests that spawn `anamne mcp-server` as a subprocess need the CLI on PATH.
+pytestmark = pytest.mark.skipif(
+    shutil.which("anamne") is None,
+    reason="anamne CLI entry point not on PATH (run `pip install -e .`)",
+)
+
+# Use this on tests that need the subprocess to actually reach the LLM.
+needs_llm_key = pytest.mark.skipif(
+    not _has_llm_key(),
+    reason="No LLM API key configured (set ANTHROPIC_API_KEY or "
+           "GEMINI_API_KEY, or add a .env in the project root)",
+)
 
 
 def _reader(pipe, sink):
@@ -131,6 +132,7 @@ def _shutdown(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+@needs_llm_key
 def test_mcp_server_boots_and_lists_all_tools():
     """The server must list every @mcp.tool decorator over real stdio JSON-RPC.
 
@@ -169,6 +171,40 @@ def test_mcp_server_boots_and_lists_all_tools():
         _shutdown(proc)
 
 
+def test_mcp_server_imports_without_api_key(monkeypatch):
+    """Module import must succeed even with no LLM API key.
+
+    18 of the 21 MCP tools are pure memory ops that don't need an LLM.
+    A Claude/Cursor subprocess that doesn't inherit the user's env vars
+    must still get a working tool surface; only `ask_why` and
+    `consolidate_facts` should surface the missing-key error at call time.
+
+    This is the bug discovered during v1.0.1 validation - previously,
+    importing `anamne.mcp.server` would crash if the keys weren't set.
+    """
+    import importlib
+    import sys
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    # Force a clean re-import so the module-level code runs fresh
+    for mod in [m for m in sys.modules if m.startswith("anamne.mcp")]:
+        sys.modules.pop(mod, None)
+    # Also drop cached config so it re-reads env
+    sys.modules.pop("anamne.config", None)
+
+    server_mod = importlib.import_module("anamne.mcp.server")
+
+    import asyncio
+    import inspect
+    tools = server_mod.mcp.list_tools()
+    if inspect.iscoroutine(tools):
+        tools = asyncio.run(tools)
+    assert len(tools) >= 16, f"expected the full tool surface, got {len(tools)}"
+
+
+@needs_llm_key
 def test_mcp_server_reports_anamne_version():
     """The server must identify itself as `anamne` with the package version.
 
