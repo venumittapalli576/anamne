@@ -98,6 +98,30 @@ anamne mcp-config --client cursor
 The result: when you open Claude on Monday, it already knows what you
 decided on Friday. Across machines if you sync `~/.anamne/`.
 
+### MCP troubleshooting
+
+> **"My MCP client connected but no anamne tools appear."**
+> The MCP server boots as a subprocess of the host (Claude/Cursor/Cline).
+> Use `anamne --version` to confirm at least v1.0.2 is on your `PATH`;
+> earlier versions refused to start without an API key.
+> Then run `anamne tools` — if it lists 21 tools, the surface is healthy
+> and the issue is on the client side (restart it).
+
+> **"`anamne` resolves to an old version."**
+> Run `pip install --upgrade anamne` (or `pip install -e .` from a clone).
+> The path that ends up in `~/.claude.json` is whatever `anamne.exe`
+> resolves to *at the time you ran `mcp-config --apply`* — it doesn't
+> update automatically when you upgrade.
+
+> **"Episodic recall doesn't return anything."**
+> Run `anamne status` and check `Episodic decisions`. Zero means you
+> haven't indexed a repo yet — run `anamne index <path-to-your-repo>`.
+
+> **"How do I verify the integration end-to-end without restarting Claude?"**
+> Run `pytest tests/test_mcp_integration.py -v` against a clone of the
+> repo. It spawns `anamne mcp-server` as a subprocess and does a real
+> MCP `initialize` + `tools/list` handshake. Same code path Claude uses.
+
 ---
 
 ## The five commands you actually need
