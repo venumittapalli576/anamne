@@ -10,6 +10,11 @@
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io)
 [![CI](https://github.com/venumittapalli576/anamne/actions/workflows/ci.yml/badge.svg)](https://github.com/venumittapalli576/anamne/actions/workflows/ci.yml)
 
+> **About this project:** Personal open-source project, released under the MIT
+> license. **Not a commercial product, not for sale, not seeking compensation.**
+> Bug reports and PRs are welcome; support is best-effort and provided on the
+> maintainer's own time. No service-level agreement is implied.
+
 ---
 
 ## What this is
