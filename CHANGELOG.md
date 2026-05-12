@@ -4,6 +4,30 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [0.45.0] — 2026-05-12
+
+### Added - Phase 45
+
+**`anamne shell` history persistence**
+- Up-arrow recall works across REPL sessions
+- Stored at `~/.anamne/shell-history`, capped at 2000 entries
+- Written on exit via `atexit`; silently skipped where `readline` is unavailable
+
+**`anamne tools --grep <substr>`**
+- Filter the MCP tool list by case-insensitive substring match against
+  name OR first-line description
+- Composes with `--json`
+
+**`anamne snapshot --include-archived`**
+- Appends a section listing fact-history events from the last 7 days
+- Shows `content_updated`, `forgotten`, and `merged_into` rows with snippets
+- Useful for catching "what got deleted/merged this week"
+
+### Tests
+- 87 tests, all passing
+
+---
+
 ## [0.44.0] — 2026-05-12
 
 ### Added - Phase 44

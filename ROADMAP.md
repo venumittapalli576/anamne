@@ -527,12 +527,19 @@ maps directly onto the LIGHT memory framework and the ACC bounded-state design f
 
 ---
 
-## Phase 45 - Future ideas
+## What's Built (v0.45.0)
 
-- **Browser extension** - "Remember this?" prompt on pages you read
-- **`anamne shell` history file** - persistent across sessions
-- **`anamne tools --grep <substr>`** - filter tool list by name/desc
-- **`anamne snapshot --include-archived`** - dump previous fact versions too
+| Feature | Status |
+|---|---|
+| `anamne shell` persistent history (~/.anamne/shell-history) | ✅ |
+| `anamne tools --grep <substr>` - filter tool list | ✅ |
+| `anamne snapshot --include-archived` - last 7 days of fact_history events | ✅ |
+
+---
+
+## Future direction
+
+The project is at a clean plateau. Future work is open-ended; no fixed roadmap.
 
 ---
 

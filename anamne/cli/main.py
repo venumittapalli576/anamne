@@ -4854,6 +4854,10 @@ def tools(
         None, "--schema", "-s", metavar="TOOL_NAME",
         help="Dump the full JSON schema for a specific tool"
     ),
+    grep: Optional[str] = typer.Option(
+        None, "--grep", "-g", metavar="SUBSTR",
+        help="Filter the list by case-insensitive substring of name OR description"
+    ),
 ) -> None:
     """List every tool the MCP server would expose to AI clients.
 
@@ -4914,6 +4918,17 @@ def tools(
     if not items:
         console.print("\n  [dim]No MCP tools detected.[/dim]\n")
         return
+
+    if grep:
+        needle = grep.lower()
+        items = [
+            it for it in items
+            if needle in (it["name"] or "").lower()
+            or needle in (it["description"] or "").lower()
+        ]
+        if not items:
+            console.print(f"\n  [dim]No tools match '{grep}'.[/dim]\n")
+            return
 
     if schema:
         match = next((it for it in items if it["name"] == schema), None)
@@ -5831,6 +5846,10 @@ def snapshot(
     as_html: bool = typer.Option(
         False, "--html", help="Emit minimal HTML instead of Markdown"
     ),
+    include_archived: bool = typer.Option(
+        False, "--include-archived",
+        help="Append a section with previous versions of facts from fact_history"
+    ),
 ) -> None:
     """Print a compact human-readable Markdown snapshot of your memory.
 
@@ -5839,6 +5858,7 @@ def snapshot(
       - Top-activation unpinned facts
       - Recently added facts (last 7 days)
       - Active working memory
+      - (with --include-archived) Recently archived fact versions
 
     Useful for pasting into a chat or a daily standup doc.
 
@@ -5846,6 +5866,7 @@ def snapshot(
       anamne snapshot
       anamne snapshot --output today.md
       anamne snapshot --limit 30
+      anamne snapshot --include-archived
     """
     from datetime import datetime, timezone, timedelta
     from anamne.store.graph import DecisionStore
@@ -5904,6 +5925,34 @@ def snapshot(
     else:
         lines.append("_None._")
     lines.append("")
+
+    if include_archived:
+        import sqlite3
+        week_ago_iso = (
+            datetime.now(timezone.utc) - timedelta(days=7)
+        ).isoformat()
+        with sqlite3.connect(store._db) as con:
+            try:
+                archived_rows = con.execute(
+                    "SELECT fact_id, content, change_type, changed_at "
+                    "FROM fact_history "
+                    "WHERE changed_at >= ? "
+                    "  AND change_type IN ('content_updated','forgotten','merged_into') "
+                    "ORDER BY changed_at DESC LIMIT ?",
+                    (week_ago_iso, limit),
+                ).fetchall()
+            except Exception:
+                archived_rows = []
+        lines.append(f"## Archived (last 7 days, {len(archived_rows)})\n")
+        if archived_rows:
+            for fid, content, ctype, when in archived_rows:
+                snippet = (content or "")[:120].replace("\n", " ")
+                lines.append(
+                    f"- _{when[:10]} {ctype}_ `{fid}`  {snippet}"
+                )
+        else:
+            lines.append("_None._")
+        lines.append("")
 
     text = "\n".join(lines)
 
@@ -6176,9 +6225,11 @@ def shell() -> None:
         "info", "history", "recent", "tags", "status", "help", "exit", "quit",
     )
 
-    # Best-effort tab completion via stdlib readline.  Skips silently on
-    # Windows when pyreadline is not installed - the REPL still works.
+    # Best-effort tab completion + persistent history via stdlib readline.
+    # Skips silently on Windows when pyreadline is not installed.
+    history_path = Path.home() / ".anamne" / "shell-history"
     try:
+        import atexit
         import readline
 
         def _completer(prefix: str, state: int):
@@ -6187,6 +6238,18 @@ def shell() -> None:
 
         readline.set_completer(_completer)
         readline.parse_and_bind("tab: complete")
+
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        if history_path.exists():
+            try:
+                readline.read_history_file(str(history_path))
+            except Exception:
+                pass
+        # Cap history at 2000 entries so the file doesn't grow forever
+        readline.set_history_length(2000)
+        atexit.register(
+            lambda: readline.write_history_file(str(history_path))
+        )
     except Exception:
         pass
 
