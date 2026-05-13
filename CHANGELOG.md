@@ -4,6 +4,34 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.3] — 2026-05-12
+
+Documentation-only patch release. No code changes.
+
+### What this picks up on PyPI
+
+The previous PyPI release (v1.0.2) shipped with a README that was missing
+the personal-project disclaimer and contained an incorrect citation. The
+fixes were committed but PyPI snapshots the README at publish time, so
+they hadn't propagated to the PyPI project page.
+
+This release re-publishes so the PyPI page matches the GitHub README.
+
+### Changed
+- README now leads with a prominent "Personal open-source project, not
+  commercial" disclaimer.
+- Agent Cognitive Compressor citation corrected from `arXiv 2510.27246`
+  (LIGHT's ID) to `arXiv 2601.11653` (ACC's actual ID).
+- Added a four-question MCP troubleshooting section to the README.
+- Removed `BLOG_POST.md` (preserved outside the repo).
+- Updated `.env.example` to use ANAMNE branding and accurate variable
+  names; documented signing/encryption keys.
+
+### Tests
+- 90 tests, all passing (no changes).
+
+---
+
 ## [1.0.2] — 2026-05-12
 
 ### Fixed
