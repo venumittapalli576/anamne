@@ -118,7 +118,7 @@ def _spawn_and_handshake(cwd: str | None = None) -> tuple[subprocess.Popen, list
         proc.terminate()
         proc.wait(timeout=3)
         raise AssertionError(
-            f"MCP server did not respond to handshake.  stderr:\n"
+            "MCP server did not respond to handshake.  stderr:\n"
             + "".join(stderr_lines[:30])
         )
     return proc, responses

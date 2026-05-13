@@ -13,7 +13,6 @@ import json
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -973,9 +972,9 @@ async function loadGraph() {
       ne.setAttribute('opacity','1');
       const n = ns[i];
       tip.innerHTML = n.type === 'tag'
-        ? `<b style="color:var(--orange)">#${n.label}</b><br>${n.full}`
+        ? `<b style="color:var(--orange)">#${escHtml(n.label)}</b><br>${escHtml(n.full)}`
         : `<span style="color:var(--accent);font-size:11px">${n.id}</span><br>${escHtml(n.full)}<br>` +
-          (n.tags.length ? `<span style="color:var(--muted)">${n.tags.map(t=>'#'+t).join(' ')}</span>` : '');
+          (n.tags.length ? `<span style="color:var(--muted)">${n.tags.map(t=>'#'+escHtml(t)).join(' ')}</span>` : '');
       tip.style.display = 'block';
     });
     ne.addEventListener('mousemove', (ev) => {

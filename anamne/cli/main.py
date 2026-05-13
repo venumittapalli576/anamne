@@ -54,7 +54,6 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -808,7 +807,7 @@ def prune(
 
     if not candidates:
         console.print(
-            f"\n  [dim]Nothing to prune"
+            "\n  [dim]Nothing to prune"
             + (f" older than {older_than}" if older_than else "")
             + (f" / no retrievals since {no_retrievals_since}"
                 if no_retrievals_since else "")
@@ -1356,7 +1355,7 @@ def facts(
         elif tag:
             console.print(f"[dim]No facts tagged: {', '.join(tag)}[/dim]")
         elif from_date or to_date:
-            console.print(f"[dim]No facts in the specified date range.[/dim]")
+            console.print("[dim]No facts in the specified date range.[/dim]")
         else:
             console.print("[dim]Scratchpad is empty. Try [bold]anamne remember \"...\"[/bold][/dim]")
         return
@@ -1718,7 +1717,7 @@ def import_chat(
         console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
+        console.print("\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
         return
 
     from anamne.store.graph import DecisionStore
@@ -1761,7 +1760,9 @@ def import_web(
     """
     _require_api_key()
     import httpx
+    import ipaddress
     import json as _json
+    import socket
     from urllib.parse import urlparse as _urlparse, urljoin, urldefrag
 
     from anamne.llm import LLMClient
@@ -1770,8 +1771,53 @@ def import_web(
     llm = LLMClient()
     store = DecisionStore()
 
+    def _is_safe_url(u: str) -> tuple[bool, str]:
+        """SSRF guard - block private networks, link-local, loopback,
+        cloud-metadata IPs, and non-http schemes.  Returns (ok, reason)."""
+        try:
+            p = _urlparse(u)
+        except Exception as exc:
+            return False, f"unparseable URL ({exc})"
+        if p.scheme not in ("http", "https"):
+            return False, f"scheme '{p.scheme}' is not http(s)"
+        if not p.hostname:
+            return False, "missing hostname"
+        # Block cloud-instance metadata endpoints by hostname or IP
+        bad_hosts = {"metadata.google.internal", "metadata", "instance-data"}
+        if p.hostname.lower() in bad_hosts:
+            return False, f"blocked host '{p.hostname}'"
+        # Resolve hostname to IP; reject if any address is private / loopback /
+        # link-local / multicast / reserved.  Catches localhost, 127.0.0.0/8,
+        # 10.0.0.0/8, 172.16/12, 192.168/16, 169.254/16 (AWS metadata), etc.
+        try:
+            addrs = {info[4][0] for info in socket.getaddrinfo(p.hostname, None)}
+        except Exception:
+            return False, f"could not resolve '{p.hostname}'"
+        for addr_str in addrs:
+            try:
+                ip = ipaddress.ip_address(addr_str)
+            except ValueError:
+                continue
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+                return False, f"resolves to non-public address {ip}"
+        return True, ""
+
+    ok, reason = _is_safe_url(url)
+    if not ok:
+        console.print(f"[red]Refusing to fetch:[/red] {reason}")
+        console.print(
+            "[dim]anamne import-web only follows public http(s) URLs to avoid "
+            "SSRF (server-side request forgery). Pass a public web URL.[/dim]"
+        )
+        raise typer.Exit(code=1)
+
     parsed_start = _urlparse(url)
-    domain = parsed_start.netloc.lstrip("www.")
+    raw_netloc = parsed_start.netloc
+    # Strip the "www." prefix if present (was incorrectly lstrip'd, which
+    # removes ANY leading chars from {w, ., a} - so "awesome.com" became
+    # "esome.com").  removeprefix does the prefix-aware thing.
+    domain = raw_netloc.removeprefix("www.")
     base_tags = list({domain, "web-import", *tag})
 
     # Existing facts for dedup (avoid storing identical facts twice during crawl)
@@ -1780,6 +1826,11 @@ def import_web(
     }
 
     def _fetch_html(u: str) -> str | None:
+        # Re-check on every URL since crawl mode follows links from the page.
+        ok, reason = _is_safe_url(u)
+        if not ok:
+            console.print(f"  [dim]skip ({reason})[/dim]")
+            return None
         try:
             r = httpx.get(
                 u, follow_redirects=True, timeout=20,
@@ -1865,7 +1916,7 @@ def import_web(
         for i, fact in enumerate(extracted, 1):
             console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
         if dry_run:
-            console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
+            console.print("\n[yellow]Dry run  - nothing stored.[/yellow] Remove --dry-run to save.")
             return
         new_count = 0
         for fact in extracted:
@@ -1932,7 +1983,7 @@ def import_web(
         console.print(f"  [cyan]{i:2}.[/cyan] {fact}")
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run  - nothing stored.[/yellow]")
+        console.print("\n[yellow]Dry run  - nothing stored.[/yellow]")
         return
 
     for fact in all_facts:
@@ -2155,7 +2206,7 @@ def export(
 
     if fmt == "markdown":
         lines: list[str] = [
-            f"# ANAMNE Memory Export",
+            "# ANAMNE Memory Export",
             f"*Exported {date.today().isoformat()}*"
             + (f" *(since {since})*" if since else "") + "\n",
         ]
@@ -3451,7 +3502,6 @@ def doctor() -> None:
     """
     import sys
     from pathlib import Path as _Path
-    from rich.table import Table
 
     ok_mark   = "[green]OK [/green]"
     warn_mark = "[yellow]!! [/yellow]"
@@ -3493,7 +3543,7 @@ def doctor() -> None:
 
     if not has_anthropic and not has_gemini:
         issues.append("No LLM API key set  - run `anamne init` or set ANTHROPIC_API_KEY / GEMINI_API_KEY in .env")
-        console.print(f"        [red]No API key configured. LLM commands will fail.[/red]")
+        console.print("        [red]No API key configured. LLM commands will fail.[/red]")
 
     # ── Data directory ────────────────────────────────────────────────────── #
     if data_dir.exists():
@@ -3656,7 +3706,6 @@ def stats(
       anamne stats
       anamne stats --json     # for scripts / dashboards
     """
-    import math
     import sqlite3
     from datetime import datetime, timezone
     from collections import Counter
@@ -4374,7 +4423,7 @@ def sync_cloud(
             raise typer.Exit(code=1)
         if once_then_exit:
             console.print(
-                f"\n  [bold]sync-cloud[/bold]  [dim](single tick, cron mode)[/dim]\n"
+                "\n  [bold]sync-cloud[/bold]  [dim](single tick, cron mode)[/dim]\n"
             )
             try:
                 sync_cloud(  # type: ignore[misc]

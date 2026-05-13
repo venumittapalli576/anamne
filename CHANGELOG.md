@@ -4,6 +4,65 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.6] — 2026-05-12
+
+**Security audit + bug fix release.** Ran the full Python security stack
+(bandit, pip-audit, ruff) plus a manual review of every attack surface
+(UI server, MCP server, web import, subprocess calls). All real findings
+fixed below; false positives documented.
+
+### Fixed - security
+
+- **SSRF in `anamne import-web`** (high). Previously the command would fetch
+  any URL the caller provided, including `http://localhost:*`, AWS metadata
+  (`http://169.254.169.254`), private RFC1918 ranges, and non-http schemes
+  like `file://`. An attacker controlling a connected MCP client (or just a
+  malicious crawl link) could pivot into the user's local network or read
+  cloud-instance secrets. Now `_is_safe_url()` rejects:
+  - Non-http(s) schemes (file, ftp, gopher, etc.)
+  - Hostnames in a blocklist (`metadata.google.internal`, ...)
+  - Any address that resolves to a loopback, private, link-local, multicast,
+    reserved, or unspecified IP.
+  - Re-checked on every URL during `--crawl`, not just the initial one.
+
+- **XSS in dashboard fact graph tooltip** (medium). The tag-node tooltip and
+  the tag list on fact-node tooltips rendered tag names without HTML
+  escaping. A tag containing markup (e.g. via an untrusted `tag_fact` MCP
+  call) would execute when the user hovered the node. Both sites now go
+  through `escHtml()`.
+
+- **Dependency vulnerability**: `gitpython>=3.1.40` floor bumped to
+  `>=3.1.50` to pull in the fix for `GHSA-mv93-w799-cj2w`.
+
+### Fixed - bugs
+
+- **`netloc.lstrip("www.")` was wrong** in `import-web`. `lstrip` takes a set
+  of characters, so `"awesome.com".lstrip("www.")` returns `"esome.com"`,
+  not `"awesome.com"`. Replaced with `removeprefix("www.")` which does the
+  prefix-aware thing.
+
+### Tests
+
+- New `tests/test_security.py` with 10 regression tests:
+  - 8 parametrised cases covering SSRF blocking (localhost, AWS metadata,
+    GCP metadata, RFC1918 ranges, file://, ftp://)
+  - 1 case asserting both XSS escape sites in the graph tooltip
+  - 1 case pinning the `removeprefix("www.")` fix in source
+- 100 tests, all passing (was 90).
+
+### Code quality
+
+- `ruff` auto-fix removed 18 unused imports and redundant f-strings across
+  the codebase.
+- Remaining lint findings audited:
+  - 6 bandit "SQL injection" warnings are confirmed false positives —
+    they flag `f"... WHERE id IN ({placeholders})"` where `placeholders`
+    is literally `"?" * len(ids)` joined with commas (no user input).
+  - 6 remaining ruff F841 (unused variable) hits are intentional test
+    fixtures.
+
+---
+
 ## [1.0.5] — 2026-05-12
 
 ### Changed

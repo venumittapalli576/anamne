@@ -2,7 +2,6 @@
 import math
 import time
 import pytest
-from pathlib import Path
 from anamne.models import Decision
 from anamne.store.graph import DecisionStore
 
@@ -553,7 +552,6 @@ def test_list_facts_includes_pinned_field(store):
 
 def test_pinned_facts_excluded_from_consolidation(store):
     """Pinned facts should not appear in consolidate_facts() input."""
-    from anamne.agents.oracle import OracleAgent
     mid = store.remember("Architecture decision: always use PostgreSQL")
     store.pin_fact(mid)
     # Consolidation should not touch the pinned fact
