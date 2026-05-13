@@ -4,6 +4,35 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.7] — 2026-05-13
+
+### Fixed
+
+- **UI server concurrency bug.** `anamne ui` used `http.server.HTTPServer`,
+  which is single-threaded. Browsers routinely make 4-6 parallel requests
+  when loading a page (`/`, `/api/stats`, `/api/facts`, etc.), and any
+  one stuck connection (slow ChromaDB query, abandoned curl, MCP probe
+  holding the socket) would block every subsequent request. Replaced
+  with `ThreadingHTTPServer`. Verified by a parallel-request stress test:
+  5 concurrent `/api/stats` requests now complete in ~2.2s each instead
+  of serialising.
+
+  This was discovered during the manual UI verification of the v1.0.6
+  security audit — it isn't a vulnerability per se, but it's a real DoS
+  in practice (any stuck request hangs the whole dashboard).
+
+### Added
+
+- `test_ui_uses_threading_http_server` regression test pinning the fix so
+  a future refactor cannot silently re-introduce the single-threaded
+  server.
+
+### Tests
+
+- 101 tests, all passing (+1 new threading regression).
+
+---
+
 ## [1.0.6] — 2026-05-12
 
 **Security audit + bug fix release.** Ran the full Python security stack

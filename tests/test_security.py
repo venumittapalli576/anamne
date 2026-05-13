@@ -96,3 +96,30 @@ def test_no_lstrip_www_bug():
     assert 'lstrip("www.")' not in cli_src, (
         "lstrip('www.') is a real bug; use removeprefix('www.') instead"
     )
+
+
+# ------------------------------------------------------------------ #
+# UI server must handle concurrent connections (ThreadingHTTPServer)    #
+# ------------------------------------------------------------------ #
+
+def test_ui_uses_threading_http_server():
+    """v1.0.6 and earlier used single-threaded http.server.HTTPServer.
+    When a browser loaded the dashboard, parallel /api/* requests would
+    serialise behind whatever first request was busy in ChromaDB, and any
+    one stuck connection would hang the entire UI for everyone.
+
+    v1.0.7 switched to ThreadingHTTPServer.  This test pins the fix so a
+    future refactor doesn't silently regress concurrency."""
+    from pathlib import Path
+
+    ui_src = (Path(__file__).resolve().parent.parent
+              / "anamne" / "ui" / "server.py").read_text(encoding="utf-8")
+    assert "ThreadingHTTPServer" in ui_src, (
+        "UI server must use ThreadingHTTPServer; the single-threaded "
+        "HTTPServer hangs when any connection stalls."
+    )
+    # Defence in depth: also ensure we don't still have the bad construction
+    assert "HTTPServer((host, port)" not in ui_src or \
+        "ThreadingHTTPServer((host, port)" in ui_src, (
+        "found HTTPServer(...) call - should be ThreadingHTTPServer(...)"
+    )

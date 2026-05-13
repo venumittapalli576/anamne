@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import threading
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -137,7 +137,10 @@ def run_ui(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True)
     # Inject store into handler class (simple approach for single-threaded server)
     _Handler.store = store
 
-    server = HTTPServer((host, port), _Handler)
+    # ThreadingHTTPServer handles concurrent connections. Single-threaded
+    # HTTPServer would hang the whole UI if any one connection got stuck
+    # (e.g. browsers make 4-6 parallel /api/* requests when loading the page).
+    server = ThreadingHTTPServer((host, port), _Handler)
     url = f"http://{host}:{port}"
 
     print(f"\n  ANAMNE UI  ->  {url}\n  Press Ctrl+C to stop.\n")
