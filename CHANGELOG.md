@@ -4,6 +4,31 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.4] — 2026-05-12
+
+### Changed
+- **`anamne ui` dashboard visual refresh.** Single-pass redesign of the web
+  dashboard — no new tabs, no new features, no backend changes; pure visual
+  layer overhaul:
+  - New palette: deeper slate background with violet accent (was GitHub gray
+    with blue accent); ambient radial gradients for depth
+  - Typography: Inter for body, JetBrains Mono for IDs / monospace; tighter
+    letter spacing, confident size hierarchy
+  - Header: stat cards with hover lift, glowing logomark, sticky positioning
+  - Sidebar: rounded buttons with active-state accent bar; better hit areas
+  - Tables wrapped in soft cards with hairline borders and row hover
+  - Buttons / inputs: focus rings with accent glow
+  - Spinners now animate; modal has backdrop blur
+  - Fact Graph background gains subtle radial gradient
+  - Custom thin scrollbar styling
+- No JS, markup structure, or backend code changed. All class names and IDs
+  preserved so behavior is byte-identical to v1.0.3.
+
+### Tests
+- 90 tests, all passing (no changes).
+
+---
+
 ## [1.0.3] — 2026-05-12
 
 Documentation-only patch release. No code changes.
