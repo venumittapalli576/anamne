@@ -181,13 +181,32 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     --text-strong: #ffffff;
     --muted: #7c7c8a;
     --muted-2: #5a5a68;
-    --accent: #a78bfa;
+
+    /* Three layer accents - one per memory layer.
+       Scratchpad = violet (calm, durable, "memory itself")
+       Working    = mint   (fresh, active, transient)
+       Episodic   = amber  (warm, historical, archival)
+    */
+    --scratchpad: #a78bfa;
+    --scratchpad-glow: rgba(167, 139, 250, 0.18);
+    --scratchpad-glow-strong: rgba(167, 139, 250, 0.35);
+    --working: #34d399;
+    --working-glow: rgba(52, 211, 153, 0.18);
+    --working-glow-strong: rgba(52, 211, 153, 0.35);
+    --episodic: #fbbf24;
+    --episodic-glow: rgba(251, 191, 36, 0.18);
+    --episodic-glow-strong: rgba(251, 191, 36, 0.35);
+
+    /* Default --accent = scratchpad (violet). Switches per active tab.
+       Everything that uses var(--accent) auto-recolors when you change tab. */
+    --accent: var(--scratchpad);
     --accent-2: #8b5cf6;
-    --accent-glow: rgba(167, 139, 250, 0.18);
-    --accent-glow-strong: rgba(167, 139, 250, 0.35);
-    --green: #34d399;
+    --accent-glow: var(--scratchpad-glow);
+    --accent-glow-strong: var(--scratchpad-glow-strong);
+
+    --green: var(--working);
     --green-soft: rgba(52, 211, 153, 0.14);
-    --yellow: #fbbf24;
+    --yellow: var(--episodic);
     --yellow-soft: rgba(251, 191, 36, 0.14);
     --red: #fb7185;
     --red-soft: rgba(251, 113, 133, 0.14);
@@ -196,6 +215,19 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     --orange: #fb923c;
     --orange-soft: rgba(251, 146, 60, 0.14);
     --shadow-glow: 0 0 0 1px var(--accent-glow), 0 8px 24px -8px var(--accent-glow);
+  }
+
+  /* Active-tab tinting: when JS sets body[data-layer="working"] etc,
+     --accent shifts to that layer's colour. All accent uses auto-adapt. */
+  body[data-layer="working"] {
+    --accent: var(--working);
+    --accent-glow: var(--working-glow);
+    --accent-glow-strong: var(--working-glow-strong);
+  }
+  body[data-layer="episodic"] {
+    --accent: var(--episodic);
+    --accent-glow: var(--episodic-glow);
+    --accent-glow-strong: var(--episodic-glow-strong);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -269,6 +301,18 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .stat:hover { border-color: var(--border); transform: translateY(-1px); }
   .stat:hover::after { opacity: 1; }
+
+  /* Each header stat card is permanently colored by its memory layer.
+     The user learns the three-layer color system at a glance, always. */
+  .stat[data-layer="scratchpad"] .n { color: var(--scratchpad); }
+  .stat[data-layer="scratchpad"]::after { background: linear-gradient(180deg, transparent, var(--scratchpad-glow)); }
+  .stat[data-layer="scratchpad"]:hover { border-color: var(--scratchpad); box-shadow: 0 0 0 1px var(--scratchpad-glow); }
+  .stat[data-layer="episodic"] .n { color: var(--episodic); }
+  .stat[data-layer="episodic"]::after { background: linear-gradient(180deg, transparent, var(--episodic-glow)); }
+  .stat[data-layer="episodic"]:hover { border-color: var(--episodic); box-shadow: 0 0 0 1px var(--episodic-glow); }
+  .stat[data-layer="working"] .n { color: var(--working); }
+  .stat[data-layer="working"]::after { background: linear-gradient(180deg, transparent, var(--working-glow)); }
+  .stat[data-layer="working"]:hover { border-color: var(--working); box-shadow: 0 0 0 1px var(--working-glow); }
   .stat .n {
     font-size: 22px;
     font-weight: 700;
@@ -395,10 +439,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .fact-text { max-width: 560px; color: var(--text); }
   .tag {
+    /* Per-tag color from the inline --tag-h variable set by JS (hash of tag name).
+       Fallback to the active accent hue when --tag-h is missing. */
+    --tag-h: 258;
     display: inline-block;
-    background: var(--accent-glow);
-    color: var(--accent);
-    border: 1px solid transparent;
+    background: hsla(var(--tag-h), 65%, 60%, 0.14);
+    color: hsl(var(--tag-h), 80%, 75%);
+    border: 1px solid hsla(var(--tag-h), 65%, 60%, 0.25);
     border-radius: 5px;
     padding: 2px 8px;
     font-size: 11px;
@@ -406,7 +453,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     margin: 2px 3px 2px 0;
     transition: all .12s;
   }
-  .tag:hover { border-color: var(--accent); }
+  .tag:hover {
+    background: hsla(var(--tag-h), 65%, 60%, 0.22);
+    border-color: hsl(var(--tag-h), 65%, 65%);
+  }
   .act {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
@@ -592,9 +642,9 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <h1>ANAMNE</h1>
   <span style="color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.02em">brain-inspired memory dashboard</span>
   <div class="stats">
-    <div class="stat"><div class="n" id="s-facts">—</div><div class="l">Scratchpad</div></div>
-    <div class="stat"><div class="n" id="s-decisions">—</div><div class="l">Episodic</div></div>
-    <div class="stat"><div class="n" id="s-working">—</div><div class="l">Working</div></div>
+    <div class="stat" data-layer="scratchpad"><div class="n" id="s-facts">—</div><div class="l">Scratchpad</div></div>
+    <div class="stat" data-layer="episodic"><div class="n" id="s-decisions">—</div><div class="l">Episodic</div></div>
+    <div class="stat" data-layer="working"><div class="n" id="s-working">—</div><div class="l">Working</div></div>
   </div>
 </header>
 <div class="main">
@@ -621,8 +671,19 @@ async function api(path) {
   return r.json();
 }
 
+// Which memory layer does each tab belong to?  Drives the per-layer
+// accent colour - --accent shifts on the body when the user switches tabs.
+const _tabLayer = {
+  facts: 'scratchpad',
+  search: 'scratchpad',  // search is over scratchpad
+  working: 'working',
+  repos: 'episodic',     // indexed repos drive the episodic store
+  graph: 'scratchpad',   // graph is over scratchpad facts
+};
+
 function showTab(tab, btn) {
   currentTab = tab;
+  document.body.dataset.layer = _tabLayer[tab] || 'scratchpad';
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   if (tab === 'facts') loadFacts();
@@ -637,9 +698,19 @@ function fmtDate(iso) {
   return iso.slice(0, 16).replace('T', ' ');
 }
 
+// Hash a tag name into a stable HSL hue (0-359).  Each tag therefore renders
+// with a consistent unique colour across the whole dashboard.
+function tagHue(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % 360;
+}
+
 function tagHtml(tags) {
   if (!tags || !tags.length) return '<span style="color:var(--muted)">—</span>';
-  return tags.map(t => `<span class="tag">${t}</span>`).join('');
+  return tags.map(t => `<span class="tag" style="--tag-h:${tagHue(t)}">${escHtml(t)}</span>`).join('');
 }
 
 // ---- Scratchpad Facts ----

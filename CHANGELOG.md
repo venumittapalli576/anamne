@@ -4,6 +4,36 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.5] — 2026-05-12
+
+### Changed
+- **Three-layer color identity in the dashboard.** Each of the three memory
+  layers (scratchpad / working / episodic) now has its own accent color,
+  reflecting the actual cognitive model of the product:
+  - **Scratchpad → violet** (`#a78bfa`) — calm, durable, "memory itself"
+  - **Working → mint** (`#34d399`) — fresh, transient, active
+  - **Episodic → amber** (`#fbbf24`) — warm, archival, remembered
+- Header stat cards are permanently tinted by their layer (always visible at
+  a glance). The active-tab accent shifts dynamically when you switch tabs —
+  the entire dashboard recolors to match the layer you're inspecting.
+- **Per-tag color hashing.** Each tag gets a unique HSL hue derived from a
+  stable hash of its name, so `python`, `architecture`, `journal` are all
+  visually distinct across the whole UI without any manual config.
+- Pure CSS + minimal JS (one `body.dataset.layer` assignment in `showTab`,
+  one `tagHue()` helper). No backend changes.
+
+### Why
+v1.0.4 was a Linear-class visual refresh but treated all three memory layers
+identically. The single most defensible design move for a product literally
+named after memory is to give each layer its own visual identity. This is
+distinctive, grounded in the product's actual architecture, and adds real
+information density (you can tell at a glance which layer a fact lives in).
+
+### Tests
+- 90 tests, all passing (no functional changes).
+
+---
+
 ## [1.0.4] — 2026-05-12
 
 ### Changed
