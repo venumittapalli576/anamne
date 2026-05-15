@@ -136,6 +136,13 @@ class DecisionStore:
             name="working_memory",
             embedding_function=_ef,
         )
+        # v1.0.9 / issue #4: serialise reads and writes so that an MCP client
+        # firing remember() + search_facts() in parallel can't observe state
+        # where SQLite has the new row but ChromaDB hasn't finished its upsert.
+        # RLock so recursive calls (e.g. remember -> _record_history) don't
+        # self-deadlock.
+        import threading
+        self._lock = threading.RLock()
         self._migrate_scratchpad_to_chroma()
 
     # ------------------------------------------------------------------ #
@@ -232,25 +239,32 @@ class DecisionStore:
     # ------------------------------------------------------------------ #
 
     def remember(self, fact: str, tags: Optional[list[str]] = None) -> str:
-        """Add a fact to scratchpad. Returns the new memory id."""
+        """Add a fact to scratchpad. Returns the new memory id.
+
+        Both the SQLite INSERT and the ChromaDB upsert happen inside a single
+        critical section, so a concurrent search_facts() call from another
+        thread (e.g. parallel MCP tool dispatch) cannot observe a half-written
+        state where the row exists in SQLite but isn't yet in ChromaDB.
+        """
         import uuid
-        mem_id = uuid.uuid4().hex[:12]
-        now = datetime.now(timezone.utc).isoformat()
-        tags_json = json.dumps(tags or [])
-        with sqlite3.connect(self._db) as con:
-            con.execute(
-                "INSERT INTO scratchpad (id, fact, tags, created_at, last_used_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (mem_id, fact, tags_json, now, now),
+        with self._lock:
+            mem_id = uuid.uuid4().hex[:12]
+            now = datetime.now(timezone.utc).isoformat()
+            tags_json = json.dumps(tags or [])
+            with sqlite3.connect(self._db) as con:
+                con.execute(
+                    "INSERT INTO scratchpad (id, fact, tags, created_at, last_used_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (mem_id, fact, tags_json, now, now),
+                )
+                self._record_history(con, mem_id, fact, tags_json, "created")
+            # Also embed into ChromaDB for semantic search
+            self._scratch_col.upsert(
+                ids=[mem_id],
+                documents=[fact],
+                metadatas=[{"tags": tags_json}],
             )
-            self._record_history(con, mem_id, fact, tags_json, "created")
-        # Also embed into ChromaDB for semantic search
-        self._scratch_col.upsert(
-            ids=[mem_id],
-            documents=[fact],
-            metadatas=[{"tags": tags_json}],
-        )
-        return mem_id
+            return mem_id
 
     def search_facts(
         self,
@@ -258,14 +272,19 @@ class DecisionStore:
         limit: int = 10,
         tags: Optional[list[str]] = None,
     ) -> list[dict]:
-        """Substring search over facts, optionally filtered by tags."""
-        q = f"%{query.lower()}%"
-        with sqlite3.connect(self._db) as con:
-            rows = con.execute(
-                "SELECT id, fact, tags FROM scratchpad "
-                "WHERE LOWER(fact) LIKE ? ORDER BY last_used_at DESC LIMIT ?",
-                (q, limit * 3 if tags else limit),  # over-fetch when filtering
-            ).fetchall()
+        """Substring search over facts, optionally filtered by tags.
+
+        Acquires the store lock so a concurrent remember() finishes its
+        SQLite + ChromaDB writes before this search sees a partial state.
+        """
+        with self._lock:
+            q = f"%{query.lower()}%"
+            with sqlite3.connect(self._db) as con:
+                rows = con.execute(
+                    "SELECT id, fact, tags FROM scratchpad "
+                    "WHERE LOWER(fact) LIKE ? ORDER BY last_used_at DESC LIMIT ?",
+                    (q, limit * 3 if tags else limit),  # over-fetch when filtering
+                ).fetchall()
         results = [{"id": r[0], "fact": r[1], "tags": json.loads(r[2])} for r in rows]
         if tags:
             tag_set = set(tags)
@@ -293,6 +312,42 @@ class DecisionStore:
             tag_set = set(tags)
             results = [f for f in results if tag_set.intersection(f["tags"])]
         return results[:limit]
+
+    def iter_facts(self, batch: int = 1000, tags: Optional[list[str]] = None):
+        """Stream every scratchpad fact in pages of `batch`.  Memory-bounded.
+
+        Use this instead of `list_facts(limit=10_000)` for commands that only
+        need a single pass (counting tags, building a snapshot, scanning by
+        date, etc.) - those don't need the whole list materialised in Python.
+
+        Yields dicts in the same shape as `list_facts()`: each entry has
+        id / fact / tags / created_at / last_used_at / use_count / pinned.
+
+        Issue #3 (v1.0.9): at 50k+ facts the `list_facts(limit=10_000)`
+        pattern loads everything into memory.  This is the streaming variant.
+        """
+        offset = 0
+        tag_set = set(tags) if tags else None
+        while True:
+            with sqlite3.connect(self._db) as con:
+                rows = con.execute(
+                    "SELECT id, fact, tags, created_at, last_used_at, use_count, "
+                    "COALESCE(pinned, 0) "
+                    "FROM scratchpad ORDER BY last_used_at DESC LIMIT ? OFFSET ?",
+                    (batch, offset),
+                ).fetchall()
+            if not rows:
+                return
+            for r in rows:
+                f = {
+                    "id": r[0], "fact": r[1], "tags": json.loads(r[2]),
+                    "created_at": r[3], "last_used_at": r[4], "use_count": r[5],
+                    "pinned": bool(r[6]),
+                }
+                if tag_set is not None and not tag_set.intersection(f["tags"]):
+                    continue
+                yield f
+            offset += batch
 
     def get_fact(self, mem_id: str) -> Optional[dict]:
         """Return a single scratchpad fact by id, or None if not found."""
@@ -550,17 +605,23 @@ class DecisionStore:
         Slower than substring search but finds conceptually related facts even
         when exact keywords don't match. Requires ChromaDB scratchpad collection.
         Falls back to substring search if the collection is empty.
+
+        Acquires the store lock so the ChromaDB query waits for any in-flight
+        remember() to finish upserting its embedding. Without this, parallel
+        MCP tool dispatch could read ChromaDB between SQLite INSERT and the
+        upsert and miss the just-stored fact (issue #4).
         """
-        total = self.fact_count()
-        if total == 0:
-            return []
-        try:
-            results = self._scratch_col.query(
-                query_texts=[query],
-                n_results=min(limit, total),
-            )
-        except Exception:
-            return self.search_facts(query, limit=limit)
+        with self._lock:
+            total = self.fact_count()
+            if total == 0:
+                return []
+            try:
+                results = self._scratch_col.query(
+                    query_texts=[query],
+                    n_results=min(limit, total),
+                )
+            except Exception:
+                return self.search_facts(query, limit=limit)
 
         ids = results["ids"][0] if results["ids"] else []
         if not ids:

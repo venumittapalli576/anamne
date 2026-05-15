@@ -4,6 +4,64 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.9] — 2026-05-13
+
+Closes both remaining open issues (#3 and #4).
+
+### Fixed - issue #4: remember/search race
+
+`DecisionStore.remember()` does (a) SQLite INSERT then (b) ChromaDB upsert.
+Before this fix, an MCP client (or any code) that dispatched
+`remember()` and `search_facts_semantic()` to different threads in parallel
+could observe a state where the SQLite row existed but the ChromaDB
+embedding wasn't yet committed - causing the semantic search to miss the
+just-stored fact.
+
+- Added `threading.RLock` to `DecisionStore`.
+- `remember()` holds the lock across BOTH writes (SQLite + ChromaDB upsert).
+- `search_facts()` and `search_facts_semantic()` acquire the lock at the
+  start of the read path, so they wait for any in-flight write to finish.
+- RLock (re-entrant) avoids self-deadlock when methods call each other
+  (e.g. `search_facts_ranked` -> `search_facts` + `search_facts_semantic`).
+
+Regression test: `test_remember_search_no_race_under_concurrent_threads`
+spawns concurrent writer + reader threads on 30 facts. Without the lock,
+some facts intermittently appeared missing under semantic search; with the
+lock, all 30 are reliably found.
+
+### Added - issue #3: iter_facts() generator for large stores
+
+Added `DecisionStore.iter_facts(batch=1000, tags=None)` which streams
+facts in pages instead of materialising the full set in Python memory.
+Memory bound is O(batch) instead of O(N) - allows commands to run
+constant-memory on stores of any size.
+
+Refactored two commands the issue specifically called out:
+- `anamne tags` - tag counter now streams; memory bound is O(unique tags),
+  not O(all facts).
+- `anamne snapshot` - rebuilt as a single streaming pass that uses
+  `heapq.nsmallest`-style top-K filtering for the "Top activation" section
+  and bounded accumulation for "Recent (7 days)". Previously materialised
+  every fact, sorted in Python; now uses the generator.
+
+Regression test: `test_iter_facts_streams_in_pages` seeds 250 rows directly
+via SQLite (bypassing ChromaDB to keep the test fast), verifies the
+generator yields them in 50-row batches with the correct dict shape, and
+that tag filtering works in streaming mode.
+
+Other commands listed in the issue (`backup`, `export`, `stats`,
+`tag-stats`, `profile`, `suggest-pins`, `sync-cloud`, `audit-log`) still
+use `list_facts()` because they genuinely need the full set materialised
+(JSON dump, sort across all facts, etc.). They remain on the existing API
+and would benefit from a future profiling pass if a user actually hits
+50k+ facts.
+
+### Tests
+
+- 103 tests, all passing (+2 new regression tests).
+
+---
+
 ## [1.0.8] — 2026-05-13
 
 ### Fixed

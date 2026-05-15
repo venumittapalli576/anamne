@@ -3070,9 +3070,11 @@ def tags(
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
-    all_facts = store.list_facts(limit=10_000)
+    # Stream rather than materialise: at 50k+ facts the old
+    # list_facts(limit=10_000) loaded a megabyte of dicts before counting.
+    # iter_facts pages 1k rows at a time and only keeps the running tag count.
     counter: Counter = Counter()
-    for f in all_facts:
+    for f in store.iter_facts():
         for t in (f.get("tags") or []):
             counter[t] += 1
 
@@ -5928,22 +5930,38 @@ def snapshot(
       anamne snapshot --include-archived
     """
     from datetime import datetime, timezone, timedelta
+    import heapq
     from anamne.store.graph import DecisionStore
 
     store = DecisionStore()
-    all_facts = store.list_facts(limit=10_000)
-    pinned = [f for f in all_facts if f.get("pinned")]
-    unpinned_scored = sorted(
-        ((store.activation_score(f["id"]), f) for f in all_facts if not f.get("pinned")),
-        key=lambda x: x[0], reverse=True,
-    )
-    top_unpinned = [f for _, f in unpinned_scored[:limit]]
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-    recent_facts = sorted(
-        [f for f in all_facts if (f.get("created_at") or "") >= week_ago],
-        key=lambda f: f.get("created_at") or "",
-        reverse=True,
-    )[:limit]
+
+    # Single streaming pass: keep only what each section actually needs.
+    # Avoids materialising 50k+ facts into memory just to slice top-K from
+    # them.  Uses heapq.nsmallest with negative key for streaming top-K.
+    pinned: list[dict] = []
+    unpinned_scored: list[tuple[float, int, dict]] = []
+    recent_facts: list[dict] = []
+    _idx = 0  # tiebreaker for stable comparison (dicts aren't comparable)
+    for f in store.iter_facts():
+        if f.get("pinned"):
+            if len(pinned) < limit:
+                pinned.append(f)
+            continue
+        # Top activation (streaming top-K, O(N log K))
+        score = store.activation_score(f["id"])
+        entry = (score, _idx, f)
+        _idx += 1
+        if len(unpinned_scored) < limit:
+            heapq.heappush(unpinned_scored, entry)
+        else:
+            heapq.heappushpop(unpinned_scored, entry)
+        # Recent (date filter)
+        if (f.get("created_at") or "") >= week_ago and len(recent_facts) < limit:
+            recent_facts.append(f)
+    # Render top activation in descending order
+    top_unpinned = [f for _, _, f in sorted(unpinned_scored, reverse=True)]
+    recent_facts.sort(key=lambda f: f.get("created_at") or "", reverse=True)
     working = store.working_active()[:limit]
 
     lines: list[str] = ["# ANAMNE memory snapshot",

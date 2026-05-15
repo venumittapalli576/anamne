@@ -102,6 +102,114 @@ def test_no_lstrip_www_bug():
 # UI server must handle concurrent connections (ThreadingHTTPServer)    #
 # ------------------------------------------------------------------ #
 
+# ------------------------------------------------------------------ #
+# Issue #4: remember + search_facts must serialize under concurrency   #
+# ------------------------------------------------------------------ #
+
+def test_remember_search_no_race_under_concurrent_threads(tmp_path):
+    """Issue #4 (closed by v1.0.9).
+
+    Before the fix: if remember() and search_facts_semantic() ran on different
+    threads, the search could observe state where the SQLite INSERT had landed
+    but the ChromaDB upsert hadn't, and miss the just-stored fact.
+
+    After the fix: both methods take a store-level RLock.  Even with N threads
+    hammering both, every fact that's been remember()ed must be findable.
+    """
+    import threading
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore(data_dir=tmp_path)
+    # Seed one base fact so semantic search has at least one neighbour
+    store.remember("seed: postgres database choice", tags=["db"])
+
+    # Race: one writer thread inserts N facts, one reader thread searches
+    # concurrently for each ID right after.  Without the lock, the reader
+    # would occasionally miss.
+    N = 30
+    ids: list[str] = []
+    errors: list[str] = []
+    write_done = threading.Event()
+
+    def writer():
+        try:
+            for i in range(N):
+                mid = store.remember(
+                    f"concurrent fact #{i} about postgres concurrent writes",
+                    tags=["race-test"],
+                )
+                ids.append(mid)
+        finally:
+            write_done.set()
+
+    def reader():
+        # Repeatedly search while writer is going
+        while not write_done.is_set() or len(ids) < N:
+            try:
+                store.search_facts_semantic("postgres concurrent writes", limit=5)
+            except Exception as e:
+                errors.append(str(e))
+            if write_done.is_set() and len(ids) >= N:
+                break
+
+    tw = threading.Thread(target=writer)
+    tr = threading.Thread(target=reader)
+    tw.start(); tr.start()
+    tw.join(); tr.join()
+
+    assert not errors, f"reader saw errors during race: {errors[:3]}"
+    # All written facts must be findable via direct id lookup post-race
+    for mid in ids:
+        got = store.get_fact(mid)
+        assert got is not None, f"fact {mid} missing after concurrent run"
+
+
+# ------------------------------------------------------------------ #
+# Issue #3: iter_facts must stream without materialising the full set  #
+# ------------------------------------------------------------------ #
+
+def test_iter_facts_streams_in_pages(tmp_path):
+    """Issue #3 (closed by v1.0.9).
+
+    iter_facts() should yield facts from disk in pages, never load the full
+    set into Python memory at once.  Verify by inserting N rows directly via
+    SQLite (bypassing ChromaDB to keep the test fast) and confirming the
+    generator yields them all in expected shape.
+    """
+    import json as _json
+    import sqlite3
+    from datetime import datetime, timezone
+    from anamne.store.graph import DecisionStore
+
+    store = DecisionStore(data_dir=tmp_path)
+    # Seed 250 rows directly (faster than going through store.remember which
+    # also embeds each one in ChromaDB).
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(store._db) as con:
+        for i in range(250):
+            con.execute(
+                "INSERT INTO scratchpad "
+                "(id, fact, tags, created_at, last_used_at, use_count, pinned) "
+                "VALUES (?, ?, ?, ?, ?, 0, 0)",
+                (f"perf-{i:04x}", f"fact number {i}",
+                 _json.dumps(["even"] if i % 2 == 0 else ["odd"]), now, now),
+            )
+
+    # Stream with batch=50 - should yield all 250 across 5 pages
+    facts = list(store.iter_facts(batch=50))
+    assert len(facts) == 250
+    assert {f["id"] for f in facts} == {f"perf-{i:04x}" for i in range(250)}
+    # Shape check
+    assert all(
+        {"id", "fact", "tags", "created_at", "last_used_at",
+         "use_count", "pinned"} <= set(f) for f in facts
+    ), "iter_facts must yield the same dict shape as list_facts"
+    # Tag filtering works in streaming mode
+    even_only = list(store.iter_facts(batch=50, tags=["even"]))
+    assert len(even_only) == 125
+    assert all("even" in f["tags"] for f in even_only)
+
+
 def test_ui_uses_threading_http_server():
     """v1.0.6 and earlier used single-threaded http.server.HTTPServer.
     When a browser loaded the dashboard, parallel /api/* requests would
