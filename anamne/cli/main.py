@@ -1758,18 +1758,13 @@ def import_web(
       anamne import-web https://docs.example.com --crawl --max-pages 30
       anamne import-web https://example.com/adr/001 --tag architecture --dry-run
     """
-    _require_api_key()
-    import httpx
+    # SSRF guard runs FIRST, before any other side effects.  URL validation
+    # is pure stdlib and doesn't need an LLM key - putting _require_api_key()
+    # before this would mean an LLM-less caller (or CI without keys) couldn't
+    # even hit the SSRF check, making security regressions invisible.
     import ipaddress
-    import json as _json
     import socket
     from urllib.parse import urlparse as _urlparse, urljoin, urldefrag
-
-    from anamne.llm import LLMClient
-    from anamne.store.graph import DecisionStore
-
-    llm = LLMClient()
-    store = DecisionStore()
 
     def _is_safe_url(u: str) -> tuple[bool, str]:
         """SSRF guard - block private networks, link-local, loopback,
@@ -1811,6 +1806,18 @@ def import_web(
             "SSRF (server-side request forgery). Pass a public web URL.[/dim]"
         )
         raise typer.Exit(code=1)
+
+    # URL is safe - now we can demand the LLM key (only needed for distillation,
+    # not for the security check above).
+    _require_api_key()
+    import httpx
+    import json as _json
+
+    from anamne.llm import LLMClient
+    from anamne.store.graph import DecisionStore
+
+    llm = LLMClient()
+    store = DecisionStore()
 
     parsed_start = _urlparse(url)
     raw_netloc = parsed_start.netloc

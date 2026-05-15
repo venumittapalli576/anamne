@@ -4,6 +4,38 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.0.8] — 2026-05-13
+
+### Fixed
+
+- **SSRF guard now runs BEFORE the API-key check.** v1.0.6 placed the URL
+  validation after `_require_api_key()`, which meant any caller (or any CI
+  environment) without an LLM key would exit early on the API-key error
+  before the SSRF guard ever fired. The 8 SSRF regression tests passed
+  locally (where API keys are configured) but failed on Ubuntu / macOS /
+  Windows CI runners (which have no keys). More importantly, this meant
+  the security guard was actually unreachable for any LLM-less use of the
+  command.
+
+  The fix: `_is_safe_url()` and its check run first, before any LLM-touching
+  code. URL validation is pure stdlib (`urllib.parse`, `ipaddress`, `socket`)
+  and doesn't need an API key. `_require_api_key()` runs only after the
+  SSRF check passes, since the key is only needed for the distillation step
+  later.
+
+  Implementation discipline: **security checks should never depend on
+  having credentials**, otherwise a stripped-down attacker context bypasses
+  them.
+
+### Tests
+
+- 101 tests, all passing. Same 11 security regression tests as v1.0.7,
+  but now they actually pass on CI too (reproduced locally with
+  `env -i PATH=... HOME=... anamne import-web ...` and verified the
+  "Refusing to fetch" message fires correctly).
+
+---
+
 ## [1.0.7] — 2026-05-13
 
 ### Fixed
