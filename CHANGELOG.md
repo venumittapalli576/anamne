@@ -4,6 +4,63 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.1.0] — 2026-05-13
+
+Dashboard redesign: warm paper aesthetic, light-by-default, new Home tab,
+theme toggle. The previous Linear-style dark-only dev-tool look fought the
+"personal memory layer" concept; this release leans into notebook
+typography and quiet earth-tone accents.
+
+### Changed
+
+- **Light theme is now the default.** Warm cream paper (`#FAF7F1`) on
+  deep ink (`#1F1D1A`), with subtle radial backdrop gradients for paper
+  feel. The previous slate-on-black dark theme remains available via the
+  new toggle.
+- **Serif headlines via Fraunces** (Google Fonts), Inter for body,
+  JetBrains Mono for IDs/numbers.  Numbers in stat cards use Fraunces too
+  for a notebook-style "table of contents" feel.
+- **Earth-tone layer accents** replace v1.0.5's jewel tones:
+  - Scratchpad → deep indigo `#4F46E5`
+  - Working   → forest moss  `#2D6A4F`
+  - Episodic  → sienna       `#92400E`
+- **Stripped chrome.** No card backgrounds on tables, no
+  hover-glow on stat cards, no card padding around content blocks.
+  Content flows on the paper.
+
+### Added
+
+- **`Home` tab** is the new default landing.  Shows a one-sentence summary
+  of memory state, the 5 most recent facts, active working memory, and a
+  "Getting started" snippet when the store is empty (replaces the
+  previous "land on an empty fact table" UX).
+- **Theme toggle** (top-right `☾` / `☀`) flips between light and dark.
+  Choice persists across reloads via `localStorage`.
+
+### Implementation notes
+
+- Backwards compatible: every existing class name and ID is preserved, so
+  the JS that handles tab switching, fact rendering, and graph layout
+  required no changes other than adding `loadHome()` + `toggleTheme()`.
+- Dark theme is a CSS-variable override via `body[data-theme="dark"]`;
+  the same per-layer `--accent` rewiring still works in both themes.
+
+### Verified
+
+- Live-rendered the dashboard in a headless browser; confirmed:
+  - Background renders as `rgb(250, 247, 241)` (cream)
+  - H1 font resolves to `Fraunces` (serif loaded)
+  - `Home` is the active tab on load, with the new layout
+  - Tab clicks correctly shift `--accent` (scratchpad → indigo,
+    working → moss, episodic → sienna) and the sidebar's active marker
+    color matches
+  - Theme toggle flips background to `rgb(15, 14, 12)` and writes
+    `"dark"` to `localStorage`; toggle back restores `"light"`
+  - Zero JS console errors
+- 103 unit + integration tests still passing.
+
+---
+
 ## [1.0.9] — 2026-05-13
 
 Closes both remaining open issues (#3 and #4).

@@ -169,211 +169,275 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <title>ANAMNE — Memory Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* ---------------------------------------------------------------- *
+   *  Palette: warm paper + ink (default) and warm-dark (toggle)
+   *
+   *  ANAMNE is a memory layer.  Memory is quiet, slow, and reflective -
+   *  it should feel like a notebook, not a Splunk dashboard.  The light
+   *  theme is the canonical look; dark is an opt-in for screens where
+   *  cream is too bright.
+   * ---------------------------------------------------------------- */
   :root {
-    --bg: #08080d;
-    --bg-2: #0c0c14;
-    --surface: #13131c;
-    --surface-2: #1a1a26;
-    --surface-hover: #20202e;
-    --border: #24243a;
-    --border-soft: #1c1c2c;
-    --text: #ecedf1;
-    --text-strong: #ffffff;
-    --muted: #7c7c8a;
-    --muted-2: #5a5a68;
+    /* Warm light theme - the default */
+    --bg: #FAF7F1;            /* cream paper */
+    --bg-2: #F4EFE5;          /* slightly aged paper */
+    --surface: #FFFCF6;       /* highlight (subtle, almost imperceptible) */
+    --surface-2: #F0EAD8;     /* hover/active rows */
+    --surface-hover: #ECE5D1;
+    --border: #D9CFB8;        /* parchment edge */
+    --border-soft: #E8E0CD;
+    --text: #1F1D1A;          /* deep ink */
+    --text-strong: #0A0907;
+    --muted: #7C7060;         /* warm gray-brown */
+    --muted-2: #A8997F;
 
-    /* Three layer accents - one per memory layer.
-       Scratchpad = violet (calm, durable, "memory itself")
-       Working    = mint   (fresh, active, transient)
-       Episodic   = amber  (warm, historical, archival)
-    */
-    --scratchpad: #a78bfa;
-    --scratchpad-glow: rgba(167, 139, 250, 0.18);
-    --scratchpad-glow-strong: rgba(167, 139, 250, 0.35);
-    --working: #34d399;
-    --working-glow: rgba(52, 211, 153, 0.18);
-    --working-glow-strong: rgba(52, 211, 153, 0.35);
-    --episodic: #fbbf24;
-    --episodic-glow: rgba(251, 191, 36, 0.18);
-    --episodic-glow-strong: rgba(251, 191, 36, 0.35);
+    /* Layer accents (light theme): earth tones.  Less saturated than
+       v1.0.5's jewel tones; still semantically distinct. */
+    --scratchpad: #4F46E5;    /* deep indigo ink */
+    --scratchpad-glow: rgba(79, 70, 229, 0.10);
+    --scratchpad-glow-strong: rgba(79, 70, 229, 0.20);
+    --working: #2D6A4F;       /* forest moss */
+    --working-glow: rgba(45, 106, 79, 0.10);
+    --working-glow-strong: rgba(45, 106, 79, 0.22);
+    --episodic: #92400E;      /* sienna */
+    --episodic-glow: rgba(146, 64, 14, 0.10);
+    --episodic-glow-strong: rgba(146, 64, 14, 0.22);
 
-    /* Default --accent = scratchpad (violet). Switches per active tab.
-       Everything that uses var(--accent) auto-recolors when you change tab. */
     --accent: var(--scratchpad);
-    --accent-2: #8b5cf6;
+    --accent-2: #3730A3;
     --accent-glow: var(--scratchpad-glow);
     --accent-glow-strong: var(--scratchpad-glow-strong);
 
     --green: var(--working);
-    --green-soft: rgba(52, 211, 153, 0.14);
+    --green-soft: rgba(45, 106, 79, 0.10);
     --yellow: var(--episodic);
-    --yellow-soft: rgba(251, 191, 36, 0.14);
-    --red: #fb7185;
-    --red-soft: rgba(251, 113, 133, 0.14);
-    --purple: #c084fc;
-    --purple-soft: rgba(192, 132, 252, 0.14);
-    --orange: #fb923c;
-    --orange-soft: rgba(251, 146, 60, 0.14);
+    --yellow-soft: rgba(146, 64, 14, 0.10);
+    --red: #B91C1C;
+    --red-soft: rgba(185, 28, 28, 0.08);
+    --purple: #6D28D9;
+    --purple-soft: rgba(109, 40, 217, 0.08);
+    --orange: #C2410C;        /* terracotta */
+    --orange-soft: rgba(194, 65, 12, 0.10);
     --shadow-glow: 0 0 0 1px var(--accent-glow), 0 8px 24px -8px var(--accent-glow);
+
+    /* Body backdrop gradient (very subtle paper-grain feel) */
+    --backdrop-1: rgba(194, 65, 12, 0.025);   /* terracotta wash */
+    --backdrop-2: rgba(45, 106, 79, 0.015);   /* moss wash */
+
+    /* Typography */
+    --font-serif: 'Fraunces', 'Source Serif Pro', Georgia, serif;
+    --font-sans:  'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono:  'JetBrains Mono', 'SF Mono', Consolas, monospace;
   }
 
-  /* Active-tab tinting: when JS sets body[data-layer="working"] etc,
-     --accent shifts to that layer's colour. All accent uses auto-adapt. */
-  body[data-layer="working"] {
-    --accent: var(--working);
-    --accent-glow: var(--working-glow);
-    --accent-glow-strong: var(--working-glow-strong);
+  /* Dark theme - opt-in via [data-theme="dark"] toggle on body */
+  body[data-theme="dark"] {
+    --bg: #0F0E0C;            /* warm near-black (not zinc) */
+    --bg-2: #1A1814;
+    --surface: #1F1C17;
+    --surface-2: #28241D;
+    --surface-hover: #322D24;
+    --border: #3A3328;
+    --border-soft: #2C2620;
+    --text: #EDE5D2;          /* warm cream-on-ink */
+    --text-strong: #FFFFFF;
+    --muted: #8B7F6B;
+    --muted-2: #5E5546;
+
+    --scratchpad: #A5B4FC;
+    --scratchpad-glow: rgba(165, 180, 252, 0.18);
+    --scratchpad-glow-strong: rgba(165, 180, 252, 0.35);
+    --working: #6EE7B7;
+    --working-glow: rgba(110, 231, 183, 0.16);
+    --working-glow-strong: rgba(110, 231, 183, 0.32);
+    --episodic: #FBBF24;
+    --episodic-glow: rgba(251, 191, 36, 0.16);
+    --episodic-glow-strong: rgba(251, 191, 36, 0.32);
+
+    --green: var(--working);
+    --green-soft: rgba(110, 231, 183, 0.14);
+    --yellow: var(--episodic);
+    --yellow-soft: rgba(251, 191, 36, 0.14);
+    --red: #FB7185;
+    --red-soft: rgba(251, 113, 133, 0.14);
+    --purple: #C084FC;
+    --purple-soft: rgba(192, 132, 252, 0.14);
+    --orange: #FB923C;
+    --orange-soft: rgba(251, 146, 60, 0.14);
+
+    --backdrop-1: rgba(165, 180, 252, 0.04);
+    --backdrop-2: rgba(110, 231, 183, 0.025);
   }
-  body[data-layer="episodic"] {
-    --accent: var(--episodic);
-    --accent-glow: var(--episodic-glow);
-    --accent-glow-strong: var(--episodic-glow-strong);
-  }
+
+  /* Active-tab tinting: --accent shifts to the layer of the current tab. */
+  body[data-layer="working"]   { --accent: var(--working);   --accent-glow: var(--working-glow);   --accent-glow-strong: var(--working-glow-strong); }
+  body[data-layer="episodic"]  { --accent: var(--episodic);  --accent-glow: var(--episodic-glow);  --accent-glow-strong: var(--episodic-glow-strong); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
     background: var(--bg);
     background-image:
-      radial-gradient(ellipse 800px 600px at 20% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
-      radial-gradient(ellipse 600px 400px at 90% 100%, rgba(52, 211, 153, 0.04), transparent 60%);
+      radial-gradient(ellipse 900px 700px at 18% -8%, var(--backdrop-1), transparent 65%),
+      radial-gradient(ellipse 700px 500px at 92% 105%, var(--backdrop-2), transparent 65%);
     background-attachment: fixed;
     color: var(--text);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 14px;
-    line-height: 1.55;
+    font-family: var(--font-sans);
+    font-size: 14.5px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  h1, h2 {
+    font-family: var(--font-serif);
+    font-feature-settings: "ss01" 1, "kern" 1;
+    letter-spacing: -.015em;
+  }
   a { color: var(--accent); text-decoration: none; transition: color .15s; }
-  a:hover { color: #c4b5fd; }
+  a:hover { opacity: .75; }
 
-  /* ----- Header ----- */
+  /* ----- Header (notebook front-matter, not a control panel) ----- */
   header {
-    background: linear-gradient(180deg, var(--bg-2), var(--bg));
+    background: var(--bg);
     border-bottom: 1px solid var(--border-soft);
-    padding: 18px 32px;
+    padding: 22px 40px 20px;
     display: flex;
-    align-items: center;
-    gap: 20px;
-    backdrop-filter: blur(8px);
+    align-items: baseline;
+    gap: 24px;
     position: sticky;
     top: 0;
     z-index: 5;
   }
   header h1 {
-    font-size: 17px;
-    font-weight: 700;
+    font-family: var(--font-serif);
+    font-size: 24px;
+    font-weight: 600;
     color: var(--text-strong);
-    letter-spacing: -.01em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    letter-spacing: -.02em;
+    line-height: 1;
   }
-  header h1::before {
-    content: '';
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 3px;
-    background: linear-gradient(135deg, var(--accent), var(--green));
-    box-shadow: 0 0 12px var(--accent-glow-strong);
+  header .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    font-style: italic;
+    font-family: var(--font-serif);
   }
-  header .stats { display: flex; gap: 10px; margin-left: auto; }
+  header .stats { display: flex; gap: 24px; margin-left: auto; align-items: center; }
   .stat {
-    text-align: center;
-    background: var(--surface);
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
-    padding: 9px 18px;
-    min-width: 96px;
-    transition: all .2s;
-    position: relative;
-    overflow: hidden;
+    text-align: right;
+    background: transparent;
+    border: none;
+    padding: 0;
+    min-width: auto;
+    transition: opacity .15s;
   }
-  .stat::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 10px;
-    background: linear-gradient(180deg, transparent, var(--accent-glow));
-    opacity: 0;
-    transition: opacity .2s;
-    pointer-events: none;
+  .stat:hover { opacity: .7; }
+
+  /* Theme toggle (top-right) */
+  #theme-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s;
+    margin-left: 8px;
   }
-  .stat:hover { border-color: var(--border); transform: translateY(-1px); }
-  .stat:hover::after { opacity: 1; }
+  #theme-toggle:hover {
+    color: var(--text);
+    border-color: var(--text);
+  }
 
   /* Each header stat card is permanently colored by its memory layer.
      The user learns the three-layer color system at a glance, always. */
   .stat[data-layer="scratchpad"] .n { color: var(--scratchpad); }
-  .stat[data-layer="scratchpad"]::after { background: linear-gradient(180deg, transparent, var(--scratchpad-glow)); }
-  .stat[data-layer="scratchpad"]:hover { border-color: var(--scratchpad); box-shadow: 0 0 0 1px var(--scratchpad-glow); }
-  .stat[data-layer="episodic"] .n { color: var(--episodic); }
-  .stat[data-layer="episodic"]::after { background: linear-gradient(180deg, transparent, var(--episodic-glow)); }
-  .stat[data-layer="episodic"]:hover { border-color: var(--episodic); box-shadow: 0 0 0 1px var(--episodic-glow); }
-  .stat[data-layer="working"] .n { color: var(--working); }
-  .stat[data-layer="working"]::after { background: linear-gradient(180deg, transparent, var(--working-glow)); }
-  .stat[data-layer="working"]:hover { border-color: var(--working); box-shadow: 0 0 0 1px var(--working-glow); }
+  /* Layer-specific tint of the big stat number (no card chrome anymore) */
+  .stat[data-layer="scratchpad"] .n { color: var(--scratchpad); }
+  .stat[data-layer="episodic"]  .n { color: var(--episodic); }
+  .stat[data-layer="working"]   .n { color: var(--working); }
   .stat .n {
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--text-strong);
+    display: inline-block;
+    font-family: var(--font-serif);
+    font-size: 28px;
+    font-weight: 600;
     letter-spacing: -.02em;
-    font-feature-settings: "tnum";
+    font-feature-settings: "tnum", "ss01" 1;
+    line-height: 1;
   }
   .stat .l {
+    display: inline-block;
     font-size: 10px;
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: .08em;
+    letter-spacing: .12em;
     font-weight: 500;
-    margin-top: 2px;
+    margin-left: 6px;
+    font-family: var(--font-sans);
   }
 
-  /* ----- Layout ----- */
-  .main { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100vh - 71px); }
+  /* ----- Layout: notebook spine + page ----- */
+  .main { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 75px); }
   nav {
-    background: var(--bg-2);
+    background: transparent;
     border-right: 1px solid var(--border-soft);
-    padding: 20px 12px;
+    padding: 28px 18px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
   nav button {
     display: flex; align-items: center; gap: 10px;
     width: 100%;
-    padding: 9px 14px;
+    padding: 8px 12px;
     background: none;
     border: none;
     color: var(--muted);
-    font-family: inherit;
-    font-size: 13px;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
     font-weight: 500;
     text-align: left;
     cursor: pointer;
-    border-radius: 8px;
-    transition: all .15s;
+    border-radius: 6px;
+    transition: color .12s, background .12s;
     position: relative;
   }
-  nav button:hover { background: var(--surface); color: var(--text); }
+  nav button:hover { color: var(--text); }
   nav button.active {
-    background: var(--surface);
     color: var(--text-strong);
+    background: var(--surface-2);
   }
   nav button.active::before {
     content: '';
     position: absolute;
-    left: -12px;
+    left: -18px;
     top: 50%;
     transform: translateY(-50%);
-    width: 3px; height: 22px;
+    width: 2px; height: 18px;
     background: var(--accent);
-    border-radius: 0 3px 3px 0;
-    box-shadow: 0 0 12px var(--accent-glow-strong);
+    border-radius: 0 2px 2px 0;
   }
-  .content { padding: 32px 40px; overflow: auto; max-width: 100%; }
+  .content {
+    padding: 40px 56px;
+    overflow: auto;
+    max-width: 100%;
+  }
+  .content h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-strong);
+    margin-bottom: 18px;
+  }
+  .content h2 + p.lede {
+    color: var(--muted);
+    margin-bottom: 28px;
+    max-width: 60ch;
+    font-size: 14px;
+    line-height: 1.6;
+  }
 
   /* ----- Toolbar ----- */
   .toolbar {
@@ -403,30 +467,29 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   }
   .toolbar label { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
 
-  /* ----- Tables ----- */
+  /* ----- Tables: notebook lines, no card chrome ----- */
   table {
     width: 100%;
     border-collapse: collapse;
-    background: var(--surface);
-    border: 1px solid var(--border-soft);
-    border-radius: 12px;
-    overflow: hidden;
+    background: transparent;
+    border: none;
   }
   th {
-    background: var(--bg-2);
+    background: transparent;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: .08em;
-    padding: 12px 16px;
+    letter-spacing: .1em;
+    padding: 8px 14px 10px;
     text-align: left;
-    border-bottom: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
+    font-family: var(--font-sans);
   }
   td {
-    padding: 13px 16px;
+    padding: 13px 14px;
     border-bottom: 1px solid var(--border-soft);
     vertical-align: top;
   }
@@ -434,29 +497,36 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   tr { transition: background .12s; }
   tr:hover td { background: var(--surface-2); }
   .id {
-    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     color: var(--muted);
     font-feature-settings: "tnum";
   }
-  .fact-text { max-width: 560px; color: var(--text); }
+  .fact-text { max-width: 600px; color: var(--text); line-height: 1.5; }
   .tag {
-    /* Per-tag color from the inline --tag-h variable set by JS (hash of tag name).
-       Fallback to the active accent hue when --tag-h is missing. */
+    /* Per-tag color from the inline --tag-h variable set by JS.
+       Light theme: low-saturation tint that reads on cream.
+       Dark theme override is below. */
     --tag-h: 258;
     display: inline-block;
-    background: hsla(var(--tag-h), 65%, 60%, 0.14);
-    color: hsl(var(--tag-h), 80%, 75%);
-    border: 1px solid hsla(var(--tag-h), 65%, 60%, 0.25);
-    border-radius: 5px;
-    padding: 2px 8px;
+    background: hsla(var(--tag-h), 55%, 45%, 0.08);
+    color: hsl(var(--tag-h), 45%, 32%);
+    border: 1px solid hsla(var(--tag-h), 55%, 45%, 0.18);
+    border-radius: 4px;
+    padding: 1px 7px;
     font-size: 11px;
     font-weight: 500;
+    font-family: var(--font-sans);
     margin: 2px 3px 2px 0;
     transition: all .12s;
   }
+  body[data-theme="dark"] .tag {
+    background: hsla(var(--tag-h), 65%, 60%, 0.14);
+    color: hsl(var(--tag-h), 80%, 75%);
+    border-color: hsla(var(--tag-h), 65%, 60%, 0.25);
+  }
   .tag:hover {
-    background: hsla(var(--tag-h), 65%, 60%, 0.22);
+    background: hsla(var(--tag-h), 55%, 45%, 0.16);
     border-color: hsl(var(--tag-h), 65%, 65%);
   }
   .act {
@@ -642,20 +712,22 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <body>
 <header>
   <h1>ANAMNE</h1>
-  <span style="color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.02em">brain-inspired memory dashboard</span>
+  <span class="subtitle">a memory layer</span>
   <div class="stats">
-    <div class="stat" data-layer="scratchpad"><div class="n" id="s-facts">—</div><div class="l">Scratchpad</div></div>
-    <div class="stat" data-layer="episodic"><div class="n" id="s-decisions">—</div><div class="l">Episodic</div></div>
-    <div class="stat" data-layer="working"><div class="n" id="s-working">—</div><div class="l">Working</div></div>
+    <div class="stat" data-layer="scratchpad"><span class="n" id="s-facts">—</span><span class="l">scratchpad</span></div>
+    <div class="stat" data-layer="episodic"><span class="n" id="s-decisions">—</span><span class="l">episodic</span></div>
+    <div class="stat" data-layer="working"><span class="n" id="s-working">—</span><span class="l">working</span></div>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">☾</button>
   </div>
 </header>
 <div class="main">
   <nav>
-    <button class="active" onclick="showTab('facts', this)">📋  Scratchpad Facts</button>
-    <button onclick="showTab('search', this)">🔍  Search</button>
-    <button onclick="showTab('working', this)">⚡  Working Memory</button>
-    <button onclick="showTab('repos', this)">📦  Indexed Repos</button>
-    <button onclick="showTab('graph', this)">🕸️  Fact Graph</button>
+    <button class="active" onclick="showTab('home', this)">Home</button>
+    <button onclick="showTab('facts', this)">Scratchpad</button>
+    <button onclick="showTab('search', this)">Search</button>
+    <button onclick="showTab('working', this)">Working memory</button>
+    <button onclick="showTab('repos', this)">Indexed repos</button>
+    <button onclick="showTab('graph', this)">Fact graph</button>
   </nav>
   <div class="content" id="content">
     <div class="spinner">Loading…</div>
@@ -666,7 +738,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 <script>
 const API = '';
-let currentTab = 'facts';
+let currentTab = 'home';
 
 async function api(path) {
   const r = await fetch(API + path);
@@ -676,6 +748,7 @@ async function api(path) {
 // Which memory layer does each tab belong to?  Drives the per-layer
 // accent colour - --accent shifts on the body when the user switches tabs.
 const _tabLayer = {
+  home: 'scratchpad',
   facts: 'scratchpad',
   search: 'scratchpad',  // search is over scratchpad
   working: 'working',
@@ -688,11 +761,96 @@ function showTab(tab, btn) {
   document.body.dataset.layer = _tabLayer[tab] || 'scratchpad';
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (tab === 'facts') loadFacts();
+  if (tab === 'home') loadHome();
+  else if (tab === 'facts') loadFacts();
   else if (tab === 'search') loadSearch();
   else if (tab === 'working') loadWorking();
   else if (tab === 'repos') loadRepos();
   else if (tab === 'graph') loadGraph();
+}
+
+// ----- Theme toggle (light/dark) -----
+function applyTheme(theme) {
+  if (theme === 'dark') {
+    document.body.dataset.theme = 'dark';
+    document.getElementById('theme-toggle').textContent = '☀';
+    document.getElementById('theme-toggle').title = 'Switch to light theme';
+  } else {
+    delete document.body.dataset.theme;
+    document.getElementById('theme-toggle').textContent = '☾';
+    document.getElementById('theme-toggle').title = 'Switch to dark theme';
+  }
+}
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try { localStorage.setItem('anamne-theme', next); } catch (e) {}
+}
+// Restore last preference on page load (default = light)
+try {
+  const saved = localStorage.getItem('anamne-theme');
+  if (saved === 'dark') applyTheme('dark');
+} catch (e) {}
+
+// ----- Home tab (the new default landing) -----
+async function loadHome() {
+  document.getElementById('content').innerHTML = `<div class="spinner">Loading...</div>`;
+  const [stats, facts, working] = await Promise.all([
+    api('/api/stats'),
+    api('/api/facts?limit=5'),
+    api('/api/working'),
+  ]);
+  const tot = stats.facts + stats.decisions + stats.working;
+  const greeting = tot === 0
+    ? 'Nothing stored yet.  Run <code>anamne remember "..."</code> in your terminal, or let Claude do it via MCP.'
+    : `${stats.facts} scratchpad fact${stats.facts!==1?'s':''}, ${stats.decisions} episodic decision${stats.decisions!==1?'s':''}, ${stats.working} active working note${stats.working!==1?'s':''}.`;
+
+  let recentHtml = '';
+  if (facts.length) {
+    recentHtml = `
+      <h2 style="margin-top:36px">Recent facts</h2>
+      <table style="margin-top:12px"><tbody>
+        ${facts.map(f => `
+          <tr>
+            <td style="width:60%">${escHtml(f.fact)}</td>
+            <td>${(f.tags||[]).map(t=>`<span class="tag" style="--tag-h:${tagHue(t)}">${escHtml(t)}</span>`).join('')}</td>
+            <td style="color:var(--muted);font-size:12px;text-align:right;font-family:var(--font-mono)">${fmtDate(f.created_at)}</td>
+          </tr>`).join('')}
+      </tbody></table>
+    `;
+  }
+
+  let workingHtml = '';
+  if (working.length) {
+    workingHtml = `
+      <h2 style="margin-top:36px">Working memory</h2>
+      <div style="margin-top:12px">
+        ${working.map(w => `
+          <div style="padding:10px 0;border-bottom:1px solid var(--border-soft)">
+            <div>${escHtml(w.note)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--font-mono)">
+              expires ${fmtDate(w.expires_at)}
+            </div>
+          </div>`).join('')}
+      </div>
+    `;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <h2>Home</h2>
+    <p class="lede">${greeting}</p>
+    ${recentHtml}
+    ${workingHtml}
+    ${tot === 0 ? `
+      <div style="margin-top:48px;padding:24px;border:1px dashed var(--border);border-radius:10px;background:var(--surface)">
+        <div style="font-family:var(--font-serif);font-size:16px;font-weight:600;margin-bottom:10px">Getting started</div>
+        <div style="line-height:1.7;color:var(--text);font-size:13.5px">
+          <div style="margin-bottom:6px"><code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px">anamne remember "we use Postgres because we need concurrent writes"</code></div>
+          <div style="margin-bottom:6px"><code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px">anamne journal "shipped v1.1.0 today"</code></div>
+          <div style="margin-bottom:6px"><code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px">anamne index ./my-repo</code></div>
+        </div>
+      </div>` : ''}
+  `;
 }
 
 function fmtDate(iso) {
@@ -1053,7 +1211,8 @@ async function init() {
   document.getElementById('s-facts').textContent = stats.facts;
   document.getElementById('s-decisions').textContent = stats.decisions;
   document.getElementById('s-working').textContent = stats.working;
-  loadFacts();
+  document.body.dataset.layer = 'scratchpad';
+  loadHome();
 }
 
 init();
