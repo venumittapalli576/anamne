@@ -1,5 +1,4 @@
 """Tests for the Decision data model."""
-import pytest
 from datetime import datetime, timezone, timedelta
 from anamne.models import Decision
 

@@ -189,7 +189,6 @@ class OracleAgent:
         Lower latency to first output than ask_pretty() — useful for
         long answers where the user can start reading immediately.
         """
-        import sys
         ep_count = self._store.count()
         fact_count = self._store.fact_count()
         work_count = len(self._store.working_active())

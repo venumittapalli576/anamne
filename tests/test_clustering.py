@@ -1,5 +1,4 @@
 """Tests for the Oracle's keyword-overlap clustering helper."""
-import pytest
 from anamne.agents.oracle import _cluster_by_overlap
 
 
