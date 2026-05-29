@@ -45,6 +45,7 @@ If you script against ANAMNE, build on these commands only.
 | `tags` | List every distinct tag with its fact count |
 | `status` | Quick stats summary (counts per layer) |
 | `stats` | Deeper analytics (top-accessed, creation rate, tag breakdown) |
+| `bench` | Benchmark retrieval quality (recall@k, MRR) — local, no API key |
 
 ## Manage facts
 
@@ -111,10 +112,12 @@ minor release.
 
 ---
 
-## MCP tool surface (21 tools)
+## MCP tool surface (22 tools)
 
 The MCP tool list is also stable for v1.x. See `anamne tools` for the live
 list with descriptions, or `anamne tools --schema <name>` for parameters.
+`benchmark_recall` (added v1.2.0) lets a client measure ANAMNE's own
+retrieval quality locally, with no API key.
 
 ## Stability promise
 

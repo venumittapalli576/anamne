@@ -1,13 +1,14 @@
 ﻿"""
 ANAMNE MCP Server  - plug into Cursor, Claude Code, or any MCP client.
 
-Exposes 21 memory tools covering all three LIGHT layers:
+Exposes 22 memory tools covering all three LIGHT layers:
   Episodic  : ask_why, search_decisions, get_file_context, get_stats
   Scratchpad: remember, list_facts, forget_fact, get_fact, tag_fact,
               update_fact, get_fact_history, search_facts, consolidate_facts,
               pin_fact, unpin_fact, related_facts, mark_fact
   Working   : working_memory_add, working_memory_active, search_working_memory,
               promote_working
+  Meta      : benchmark_recall (measure retrieval quality, local/no key)
 """
 
 from __future__ import annotations
@@ -356,6 +357,25 @@ def promote_working(working_id: str, tags: list[str] | None = None) -> dict:
     if new_id is None:
         return {"error": f"No working note with id: {working_id}"}
     return {"old_working_id": working_id, "new_fact_id": new_id}
+
+
+@mcp.tool()
+def benchmark_recall(k: int = 5) -> dict:
+    """Benchmark ANAMNE's own retrieval quality on a curated memory dataset.
+
+    Runs a fully local, no-API-key retrieval benchmark in a throwaway store
+    (the user's real memory is never touched) and reports, per strategy,
+    recall@k, hit@1, MRR@k, and p50/p95 latency. Useful for answering
+    "how good is my memory recall?" or for verifying an upgrade didn't
+    regress retrieval quality.
+
+    Returns the structured results dict plus a one-line `headline` summary.
+    """
+    from anamne.bench import run_benchmark, summary_line
+
+    result = run_benchmark(k=k)
+    result["headline"] = summary_line(result)
+    return result
 
 
 @mcp.tool()

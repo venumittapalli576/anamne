@@ -174,7 +174,7 @@ def test_mcp_server_boots_and_lists_all_tools():
 def test_mcp_server_imports_without_api_key(monkeypatch):
     """Module import must succeed even with no LLM API key.
 
-    18 of the 21 MCP tools are pure memory ops that don't need an LLM.
+    19 of the 22 MCP tools are pure memory ops that don't need an LLM.
     A Claude/Cursor subprocess that doesn't inherit the user's env vars
     must still get a working tool surface; only `ask_why` and
     `consolidate_facts` should surface the missing-key error at call time.

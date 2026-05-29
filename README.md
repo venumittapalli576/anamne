@@ -67,6 +67,38 @@ neuroscience claim.
 
 ---
 
+## Does retrieval actually work?
+
+A memory layer is only as good as its ability to *find the right memory*.
+ANAMNE ships a reproducible benchmark so you don't have to take that on
+faith. It seeds a throwaway store with 48 personal-style facts and runs 32
+labelled natural-language queries against three retrieval strategies:
+
+| Strategy | recall@5 | hit@1 | MRR | What it is |
+|---|---|---|---|---|
+| `substring` | 0% | 0% | 0.00 | Literal `LIKE '%query%'` over raw fact text |
+| `semantic` | 97% | 91% | 0.94 | ChromaDB nearest-neighbour over embeddings |
+| **`hybrid`** | **97%** | **91%** | **0.94** | substring + semantic, re-ranked by ACT-R — *production default* |
+
+The queries are real questions ("what testing framework do I use?"), not
+keyword echoes — so the literal-substring baseline scores **0%**, because
+the query words almost never appear verbatim in the stored fact. That's the
+whole point: it's the floor embeddings have to clear, and they clear it.
+
+Reproduce it yourself — fully local, no API key, in under a minute:
+
+```bash
+anamne bench                 # rich comparison table
+anamne bench --by-type       # recall broken down by query type
+anamne bench --json          # machine-readable
+```
+
+Or call it over MCP (`benchmark_recall`) to have your AI run it. The recall
+numbers are deterministic for the bundled MiniLM embedder; latency is
+embedding-bound (~350 ms p50 on a laptop, vs ~1 ms for substring).
+
+---
+
 ## Setup
 
 ```bash
@@ -91,7 +123,7 @@ Data lives in `~/.anamne/` (SQLite + ChromaDB). Nothing leaves your machine.
 
 Once `anamne init` runs, the same memory is available to every AI tool
 that speaks MCP. Add ANAMNE to your client config and Claude / Cursor /
-Cline can call `remember`, `ask_why`, `search_facts`, and 18 other tools
+Cline can call `remember`, `ask_why`, `search_facts`, and 19 other tools
 directly — no copy-paste, no context windows to refill.
 
 ```bash
@@ -109,7 +141,7 @@ decided on Friday. Across machines if you sync `~/.anamne/`.
 > The MCP server boots as a subprocess of the host (Claude/Cursor/Cline).
 > Use `anamne --version` to confirm at least v1.0.2 is on your `PATH`;
 > earlier versions refused to start without an API key.
-> Then run `anamne tools` — if it lists 21 tools, the surface is healthy
+> Then run `anamne tools` — if it lists 22 tools, the surface is healthy
 > and the issue is on the client side (restart it).
 
 > **"`anamne` resolves to an old version."**
@@ -159,7 +191,7 @@ specific one. Highlights:
 
 **Episodic:** `index <repo>`, `sync <repo>`, `watch`
 
-**Inspect:** `tags`, `status`, `stats`, `history`, `doctor`
+**Inspect:** `tags`, `status`, `stats`, `history`, `doctor`, `bench`
 
 **Backup:** `export`, `import-memory`, `backup`
 
@@ -217,7 +249,7 @@ target SaaS builders. ANAMNE is for individuals who use AI tools daily.
 |---|---|---|
 | Where the data lives | Your machine | Their backend |
 | Hosting required | None (SQLite + ChromaDB) | Yes |
-| MCP-native | Yes (21 tools) | No |
+| MCP-native | Yes (22 tools) | No |
 | Target user | Individual humans | SaaS builders |
 | Open source | MIT | Various |
 

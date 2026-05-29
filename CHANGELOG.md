@@ -4,6 +4,53 @@ All notable changes to ANAMNE are documented here.
 
 ---
 
+## [1.2.0] — 2026-05-28
+
+Reproducible retrieval benchmark. A memory layer's whole job is finding the
+right memory — this release lets anyone prove ANAMNE does, fully local, no
+API key, in under a minute.
+
+### Added
+
+- **`anamne bench`** — runs the bundled retrieval benchmark and prints a
+  rich comparison table (recall@k, hit@1, MRR, p50/p95 latency) across three
+  strategies: `substring`, `semantic`, and `hybrid` (the production default).
+  Flags: `-k`, `--strategy` (repeatable), `--by-type`, `--json`.
+- **Bundled benchmark dataset** (`anamne/bench/dataset.json`) — 48
+  personal-style facts and 32 labelled natural-language queries (keyword /
+  paraphrase / multi / distractor) with per-query relevance labels.
+- **`benchmark_recall` MCP tool** (22 tools total) — lets an AI client run
+  the benchmark and get structured results plus a one-line headline.
+- **`DecisionStore.close()`** — releases the ChromaDB client through its own
+  refcounted `Client.close()`, so a throwaway store tears its data directory
+  down cleanly (notably on Windows, where the open SQLite handle blocked
+  deletion). Refcount-aware: a coexisting store on another path is untouched.
+
+### Results
+
+On the bundled dataset (48 facts / 32 queries, k=5, local MiniLM embedder):
+
+| Strategy | recall@5 | hit@1 | MRR |
+|---|---|---|---|
+| substring | 0% | 0% | 0.00 |
+| semantic | 97% | 91% | 0.94 |
+| **hybrid** | **97%** | **91%** | **0.94** |
+
+The literal-substring baseline scores 0% because the queries are real
+questions, not keyword echoes — which is exactly why embeddings matter.
+
+### Verified
+
+- 14 new benchmark tests (dataset integrity + harness behaviour). The
+  harness always builds an isolated throwaway store and never reads or writes
+  the user's real `~/.anamne` data.
+- Confirmed zero temp-directory leaks, and that a coexisting real store keeps
+  working after the benchmark closes its own client (the in-process
+  `benchmark_recall` path).
+- Full test suite passing.
+
+---
+
 ## [1.1.0] — 2026-05-13
 
 Dashboard redesign: warm paper aesthetic, light-by-default, new Home tab,

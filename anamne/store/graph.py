@@ -145,6 +145,26 @@ class DecisionStore:
         self._lock = threading.RLock()
         self._migrate_scratchpad_to_chroma()
 
+    def close(self) -> None:
+        """Release the ChromaDB client's resources (file handles + background system).
+
+        SQLite connections are opened and closed per call, but ChromaDB's
+        PersistentClient holds its store open for the client's lifetime. On
+        Windows that open handle blocks deletion of the data directory, so a
+        throwaway store (e.g. the benchmark harness) can't clean up after
+        itself without this.
+
+        Delegates to ChromaDB's own refcounted ``Client.close()``, which only
+        stops the underlying system once the last client on that path closes
+        and removes it from the shared cache (so a fresh store can reopen the
+        same path afterwards). Clients on *other* paths are untouched. Safe to
+        call more than once.
+        """
+        try:
+            self._chroma.close()
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------ #
     # Write                                                                 #
     # ------------------------------------------------------------------ #

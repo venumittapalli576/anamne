@@ -29,6 +29,7 @@ Working memory (session-scoped):
 
 Maintenance:
   stats             - detailed memory analytics (most-accessed, creation rate, ACT-R)
+  bench             - benchmark retrieval quality (recall@k, MRR; local, no API key)
   tag-stats         - tag analytics: counts, co-occurrence, monthly growth
   recap             - LLM narrative of today's memory activity (--days, --no-llm)
   dedupe            - find and remove exact-text duplicate facts (no LLM required)
@@ -3898,6 +3899,115 @@ def stats(
         console.print()
 
 
+@app.command()
+def bench(
+    k: int = typer.Option(5, "--k", "-k", help="Cut-off for recall@k / mrr@k"),
+    strategy: list[str] = typer.Option(
+        [], "--strategy", "-s",
+        help="Limit to specific strategies (repeatable): substring | semantic | hybrid",
+    ),
+    by_type: bool = typer.Option(
+        False, "--by-type", help="Break recall down by query type (keyword/paraphrase/multi/distractor)"
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit the full results dict as JSON (CI / sharing)"
+    ),
+) -> None:
+    """Benchmark retrieval quality on a curated personal-memory dataset.
+
+    Measures how well ANAMNE *finds the right memory* - the part that actually
+    matters for a memory layer. Runs fully local with no API key (the only
+    model is the ONNX embedder ChromaDB already ships with).
+
+    A throwaway store is built in a temp directory, seeded with the benchmark
+    facts, and removed afterwards. Your real ~/.anamne memory is never touched.
+
+    Strategies compared:
+      substring  - literal LIKE match (keyword floor; questions rarely match)
+      semantic   - ChromaDB embedding nearest-neighbour
+      hybrid     - substring + semantic, re-ranked by ACT-R activation (default)
+
+    Examples:
+      anamne bench
+      anamne bench -k 3 --by-type
+      anamne bench --strategy hybrid --json
+    """
+    from anamne.bench import best_strategy, run_benchmark, summary_line
+
+    chosen = strategy or None
+    try:
+        with console.status("[cyan]Running benchmark (seeding facts, embedding queries)...[/cyan]"):
+            result = run_benchmark(k=k, strategies=chosen)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    if as_json:
+        console.print(json.dumps(result, indent=2))
+        return
+
+    console.print()
+    console.print(
+        f"[bold green]ANAMNE retrieval benchmark[/bold green]  "
+        f"[dim]{result['dataset']} v{result['dataset_version']}[/dim]"
+    )
+    console.print(
+        f"[dim]{result['num_facts']} facts | {result['num_queries']} queries | "
+        f"k={result['k']} | {result['embedder']}[/dim]"
+    )
+    console.print()
+
+    winner = best_strategy(result)
+    table = Table(border_style="dim", padding=(0, 2))
+    table.add_column("Strategy", style="cyan")
+    table.add_column(f"recall@{k}", justify="right")
+    table.add_column("hit@1", justify="right")
+    table.add_column(f"MRR@{k}", justify="right")
+    table.add_column("p50 ms", justify="right")
+    table.add_column("p95 ms", justify="right")
+    for name, s in result["strategies"].items():
+        label = f"[bold green]{name}[/bold green] [green]*[/green]" if name == winner else name
+        table.add_row(
+            label,
+            f"{s['recall_at_k'] * 100:.0f}%",
+            f"{s['hit_at_1'] * 100:.0f}%",
+            f"{s['mrr_at_k']:.2f}",
+            f"{s['p50_ms']:.1f}",
+            f"{s['p95_ms']:.1f}",
+        )
+    console.print(table)
+    if "substring" in result["strategies"]:
+        console.print(
+            "[dim]substring is a literal-phrase match (keyword floor); "
+            "natural-language questions rarely overlap verbatim, which is "
+            "exactly why ANAMNE defaults to hybrid semantic retrieval.[/dim]"
+        )
+
+    if by_type:
+        console.print()
+        console.print("[bold]Recall by query type:[/bold]")
+        type_table = Table(border_style="dim", padding=(0, 2))
+        type_table.add_column("Strategy", style="cyan")
+        all_types = sorted({
+            t for s in result["strategies"].values() for t in s["recall_by_type"]
+        })
+        for t in all_types:
+            type_table.add_column(t, justify="right")
+        for name, s in result["strategies"].items():
+            row = [name] + [
+                f"{s['recall_by_type'].get(t, 0.0) * 100:.0f}%" for t in all_types
+            ]
+            type_table.add_row(*row)
+        console.print(type_table)
+
+    console.print()
+    console.print(Panel(summary_line(result), border_style="green", padding=(0, 2)))
+    console.print(
+        "[dim]Reproduce: [bold]anamne bench[/bold]  |  "
+        "no API key required  |  your real memory is untouched[/dim]"
+    )
+
+
 @app.command(name="tag-stats", hidden=True)
 def tag_stats(
     top: int = typer.Option(20, "--top", "-n", help="Show top N tags"),
@@ -5029,7 +5139,7 @@ def mcp_server() -> None:
             f"anamne MCP server starting (model: {cfg.resolved_model()})\n"
         )
     else:
-        # Degrade gracefully: 18 of the 21 MCP tools don't need an LLM.
+        # Degrade gracefully: 19 of the 22 MCP tools don't need an LLM.
         # Boot anyway so memory reads/writes still work; LLM-dependent
         # tools (ask_why, consolidate_facts) will surface the error at
         # call time instead of taking the whole server down.

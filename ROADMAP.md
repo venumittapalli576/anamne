@@ -540,6 +540,26 @@ the command surface was audited and frozen:
 
 ---
 
+## What's Built (v1.2.0)
+
+| Feature | Status |
+|---|---|
+| `anamne bench` — reproducible retrieval benchmark (recall@k, hit@1, MRR, latency) | ✅ |
+| Bundled dataset: 48 personal-style facts + 32 labelled NL queries | ✅ |
+| Three strategies compared head-to-head: substring / semantic / hybrid | ✅ |
+| `--by-type` recall breakdown, repeatable `--strategy`, `--json` output | ✅ |
+| `benchmark_recall` MCP tool (22 tools total) | ✅ |
+| Fully local, no API key (bundled ONNX MiniLM embedder) | ✅ |
+| `DecisionStore.close()` — refcounted ChromaDB release for clean temp teardown | ✅ |
+| 14 benchmark tests; harness never touches `~/.anamne` | ✅ |
+
+Headline (bundled dataset, k=5): **hybrid 97% recall@5, 0.94 MRR**, while
+the literal-substring baseline scores **0%** — because the queries are real
+questions, not keyword echoes. That gap is the case for embeddings, now
+reproducible with one command.
+
+---
+
 ## v1.x direction
 
 The v1.x series is **maintenance + real-world hardening**, not new features:
@@ -550,8 +570,11 @@ The v1.x series is **maintenance + real-world hardening**, not new features:
 - Cross-platform CI (currently single-OS)
 - Documentation improvements
 
-No new visible commands will land in v1.x. Hidden commands may be tweaked,
-removed, or promoted to visible based on real usage signal.
+No new *memory* commands will land in v1.x. The one visible addition is
+`anamne bench` (v1.2.0) — credibility/quality tooling that measures the
+retrieval already built rather than adding a memory feature, which is why it
+fits the "hardening + documentation" mandate. Hidden commands may be
+tweaked, removed, or promoted to visible based on real usage signal.
 
 ## v2.x possibilities (not commitments)
 
